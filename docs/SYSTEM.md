@@ -255,8 +255,8 @@ ingest spine.
 
 | Connector | Source | State (per the product map) |
 |---|---|---|
-| **Cloud** | Email · Calendar · Files · Meetings | Mechanics work; today account-bound to one person, runs in an un-cloneable hosted job. *(~40%.)* |
-| **Local** | iMessage · WhatsApp (the phone's chat databases) | Real scraping exists; macOS-only and hardcodes one home path. *(~20%.)* |
+| **Cloud** | Email · Calendar · Files · Meetings | **De-welded to a portable recipe**: a scheduled read-only routine you stand up from [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md) (paste-in prompt + rails). Specified, not shipped code; it also writes the correspondents file the local lanes consume. The email *adapter* it reuses (sent-correspondent harvest + spam-drop) is built + tested in [`ingest/adapters/email_source.py`](../ingest/adapters/email_source.py). |
+| **Local** | iMessage · WhatsApp (the phone's chat databases) | **Built + tested, de-welded** — the local Mac sync agent ([`ingest/local/`](../ingest/local/), `python -m ingest.local.sync`): allowlisted, sanitized, proposals-only; **path-resolved via `mcs_paths`** (no hardcoded home path). Needs a one-time macOS Full Disk Access grant; off-Mac it degrades cleanly. See [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md). |
 | **Code** | A git host (repos/branches) → feeds the R&D pillar | Exists, but hardwired to specific repos; needs "connect *any* repo." *(~15%.)* |
 | **Chat** | Slack | Retired in the source company; **needs a full rebuild** (you named it as core). *(0%.)* |
 
@@ -343,19 +343,23 @@ so you know what you can run today.
 | **Genesis intelligence layer** (`genesis_pipeline` · `meta_initiative_deriver` · `roster_proposer` · `review_surface` · `genesis_contracts`) | ✅ Yes | Real. MI-deriver, roster-proposer (≥3-evidence floor), review surface (Type-2), **EgressGate** rail — all built. |
 | **Genesis test suite** (`test_genesis_resolver.py` · `test_genesis_intelligence.py` · `test_genesis_contract_conformance.py` · `test_genesis_pillar_writer.py` · `test_agent_wiki_builder.py`) | ✅ Yes | **74 tests pass** (`/usr/bin/python3 -m pytest -q` in `genesis/` → `74 passed`). Verifies the rails: anchor-or-drop, proposals-only, never-re-propose-base-roster, MIN_EVIDENCE, egress-blocks-private, Type-2 packet, full-corpus mode. |
 | **The full ~7,400-line populator** (recovered upstream populator) | ❌ No | Recoverable from the source company's history (archived intact). The resurrect target. |
-| **Ingest spine** (sanitize · normalize · dedup · privacy-gate) | ❌ No | Specified; ~75% reusable; still in the private brain. |
-| **Connectors** (cloud / local / code / Slack) | ❌ No | Specified; the least-portable layer (account/path/host-bound; Slack 0%). |
+| **Ingest spine** (sanitize · normalize · dedup · privacy-gate) | ✅ Yes | **Built + tested in [`ingest/`](../ingest/)** — sanitize → normalize → dedup → pipeline, plus the file + email adapters. The reusable spine connectors feed. |
+| **Connectors — local message lanes** (iMessage · WhatsApp) | ✅ Yes | **Built + tested in [`ingest/local/`](../ingest/local/)** (the local Mac sync agent): allowlisted, sanitized, proposals-only, path-resolved via `mcs_paths`. Needs a one-time macOS Full Disk Access grant. See [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md). |
+| **Connectors — cloud routine** (email · Drive · calendar) | ⚠️ Recipe | **Specified, not shipped code**: a scheduled read-only routine you stand up from [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md). The email adapter it reuses is built + tested. |
+| **Connectors — code host · Slack chat** | ❌ No | Not built (account/host-bound; Slack retired upstream → full rebuild). The least-portable remaining layer. |
 | **The 5 steering skills** (ramble/vision/manifest/morning/pulse) | ❌ No | Specified; exist with strong logic in the private brain, welded to that company. |
 | **`/close` · `atomic-decompose` · auto-merge template** | ❌ No | Specified (the NEW components); de-weld plan written. |
 | **Self-improvement loop** (fold · skill-deltas · task-proposals) | ❌ No | Specified; ~35% built in the private brain; not ported. |
 | **Packaging** (path-resolver · skill namespace · installer · LICENSE · README · root CLAUDE.md) | ⚠️ Partial | Git repo, `LICENSE`, `README.md`, `install.py`, and root `CLAUDE.md` all exist. The skill namespace and remaining onboarding polish are the open packaging work. |
 
 **One-line truth:** the **engine that births a brain has its core beating in
-this repo and green**; the **machine that feeds it (connectors, spine) and the
-machine that drives it (the 5 skills, the loop)** are designed and proven
-elsewhere but **not yet moved in**. The honest ship-readiness number, against
-"a stranger clones this and runs it," is low — but the gap is **porting and
-de-welding excellent existing parts, not inventing them.**
+this repo and green**, and the **machine that feeds it is now largely moved in
+too** — the ingest spine and the local iMessage/WhatsApp lanes are in-repo and
+tested, the cloud email/Drive/calendar half is a portable stand-up recipe, and
+the loop is here. What's **still designed-but-not-moved-in**: the 5 steering
+skills as runnable code (the skill *specs* are here, de-welded), the code-host +
+Slack connectors, and a real model behind the gate. The gap that remains is
+**porting and de-welding excellent existing parts, not inventing them.**
 
 ---
 
@@ -367,5 +371,10 @@ de-welding excellent existing parts, not inventing them.**
   end-to-end demo and `python3 genesis_resolver.py` for the resolver demo. (See
   [genesis/README.md](../genesis/README.md).)
 - **To stand the system up + the genesis flow:** [SETUP.md](SETUP.md).
+- **To point the on-ramp at your own data:** [CONNECT.md](CONNECT.md).
+- **The local↔cloud ingest split (iMessage/WhatsApp locally; the allowlist + refresh cadence):**
+  [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md).
+- **To stand up the cloud email/Drive/calendar routine (recipe + paste-in prompt):**
+  [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md).
 - **The rules every clone inherits (how to think/build/talk here):**
   [CLAUDE.md](../CLAUDE.md).

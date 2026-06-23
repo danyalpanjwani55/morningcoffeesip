@@ -1,0 +1,9 @@
+launch_date = 2026-08-01
+
+Early draft plan (pre-founding, rough notes — superseded later).
+
+This is the very first back-of-envelope plan, before the founding decision. At
+this point we were loosely aiming to launch around 2026-08-01 and had a $28
+placeholder price in mind. None of this is final — it predates the locked plan.
+
+Kept for the record so the timeline is honest.

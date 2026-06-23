@@ -104,6 +104,100 @@ def test_8_dep_check_rejects_old_python(capsys):
     assert install._check_python(version_info=(3, 9, 0)) is True
 
 
+# --- skill discovery + namespace (read-only over skills/) ----------------- #
+def _seed_repo_with_skills(monkeypatch, tmp_path, skill_layout):
+    """Point repo_root() (and thus skills/) at a tmp repo and seed it.
+
+    ``skill_layout`` maps skill-name -> "dir" (a ``<name>/SKILL.md``) or "flat"
+    (a ``<name>.md``). Returns the skills/ Path. Skills are normally ported by a
+    separate lane; here the test plays that lane so the installer has something
+    to namespace."""
+    repo = tmp_path / "repo"
+    skills = repo / "skills"
+    skills.mkdir(parents=True)
+    for name, kind in skill_layout.items():
+        if kind == "dir":
+            (skills / name).mkdir()
+            (skills / name / "SKILL.md").write_text(
+                f"# {name}\n", encoding="utf-8")
+        elif kind == "flat":
+            (skills / f"{name}.md").write_text(f"# {name}\n", encoding="utf-8")
+        else:
+            raise ValueError(kind)
+    monkeypatch.setenv(mcs_paths.ENV_REPO_ROOT, str(repo))
+    mcs_paths.reset_cache()
+    return skills
+
+
+def test_9_namespaces_discovered_skills(monkeypatch, tmp_path):
+    _seed_repo_with_skills(
+        monkeypatch, tmp_path,
+        {"ramble": "dir", "vision": "flat", ".hidden": "flat"})
+    brain = tmp_path / "b"
+    rc = install.main(["--brain-root", str(brain), "--project", "acme"])
+    assert rc == 0
+    manifest_path = brain / "agents" / "skills.manifest.json"
+    assert manifest_path.is_file()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # both layouts discovered; the hidden one ignored
+    assert manifest["skills"] == {
+        "ramble": "mcs:acme:ramble",
+        "vision": "mcs:acme:vision",
+    }
+    # a second copy is stamped into the config dir
+    cfg_copy = (tmp_path / "skills.manifest.json")
+    assert cfg_copy.is_file()
+    assert json.loads(cfg_copy.read_text(encoding="utf-8")) == manifest
+
+
+def test_10_no_skills_is_clean_noop(monkeypatch, tmp_path):
+    # repo with NO skills/ dir at all (the realistic pre-port state)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setenv(mcs_paths.ENV_REPO_ROOT, str(repo))
+    mcs_paths.reset_cache()
+    brain = tmp_path / "b"
+    rc, out = _run_capture(["--brain-root", str(brain), "--project", "acme"])
+    assert rc == 0
+    assert "no skills/ dir yet" in out
+    manifest = json.loads(
+        (brain / "agents" / "skills.manifest.json").read_text(encoding="utf-8"))
+    assert manifest["skills"] == {}  # empty, but present
+    assert not (repo / "skills").exists()  # installer did NOT create skills/
+
+
+def test_11_skills_dir_is_read_only(monkeypatch, tmp_path):
+    skills = _seed_repo_with_skills(
+        monkeypatch, tmp_path, {"ramble": "dir", "pulse": "flat"})
+    before = {p: p.read_bytes() for p in skills.rglob("*") if p.is_file()}
+    brain = tmp_path / "b"
+    assert install.main(["--brain-root", str(brain), "--project", "acme"]) == 0
+    after = {p: p.read_bytes() for p in skills.rglob("*") if p.is_file()}
+    assert after == before  # not one byte under skills/ was touched/added
+
+
+def test_12_dry_run_writes_no_manifest(monkeypatch, tmp_path):
+    _seed_repo_with_skills(monkeypatch, tmp_path, {"ramble": "dir"})
+    brain = tmp_path / "b"
+    rc = install.main(["--brain-root", str(brain), "--project", "acme",
+                       "--dry-run"])
+    assert rc == 0
+    assert not (brain / "agents" / "skills.manifest.json").exists()
+    assert not (tmp_path / "skills.manifest.json").exists()
+
+
+def test_13_manifest_idempotent(monkeypatch, tmp_path):
+    _seed_repo_with_skills(monkeypatch, tmp_path, {"ramble": "dir"})
+    brain = tmp_path / "b"
+    assert install.main(["--brain-root", str(brain), "--project", "acme"]) == 0
+    manifest_path = brain / "agents" / "skills.manifest.json"
+    mtime_before = manifest_path.stat().st_mtime_ns
+    rc, out = _run_capture(["--brain-root", str(brain), "--project", "acme"])
+    assert rc == 0
+    assert "skill manifest unchanged" in out
+    assert manifest_path.stat().st_mtime_ns == mtime_before  # not rewritten
+
+
 # --- helper: capture stdout of a main() run ------------------------------- #
 def _run_capture(argv):
     import io

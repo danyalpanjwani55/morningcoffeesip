@@ -16,14 +16,20 @@ data into dated, sourced facts and proposes your company's vision, its top initi
 team of AI agents — then shows you a review screen to approve, edit, or reject. After that you
 *steer* it every day with a handful of skills.
 
-**The honest status, up front — read this before you budget your time.** Most of that journey
-is **designed but not yet built into this repo.** Right now, exactly one piece runs: the
-**genesis engine's reasoning core** (the part that decides which facts are current and drafts
-the proposals), and it runs only on **built-in sample data with a fake stand-in for the AI**
-("stub" = a canned, scripted reply used in place of a real model so the logic can be tested
-without the internet). It does **not** yet connect to your Gmail, it does **not** yet read
-your real company, and there is **no review screen, no daily-steer skills, and no installer**
-in this repo yet. Those exist as design specs, not as software you can run.
+**The honest status, up front — read this before you budget your time.** The **headline
+journey now runs end to end on one command** (`python3 run.py` at the repo root): it ingests a
+pile of sources, runs the genesis engine, prints a plain-English review packet, takes your
+ratify gate, and builds a cited wiki for each agent you approve. The ingest clean-up spine, the
+genesis reasoning core, the installer/scaffolder, the five steering skills, and the
+self-improvement loop **all live in this repo and pass their tests** (302 in total; the genesis
+core is 74 of them). What runs today does so on **built-in sample data with a small offline
+stand-in for the AI** (a deterministic model used in place of a real one so the logic runs with
+no internet and no API key) — but you can point it at **your own folder of exported notes and
+mail** with `--sources` (see [CONNECT.md](CONNECT.md)). What is **not** built yet: live
+*connectors* that auto-pull from Gmail / Slack / Drive (you export to a folder for now), a real
+model wired in (you inject one), and a **click-to-ratify screen** (ratify is a terminal prompt
+today). Those three are the remaining gap between "runs end to end" and "runs on your live
+company with one click."
 
 **So what can you actually do today?** Three things, and they're worth doing because they
 prove the engine's logic is real and let you read the full plan:
@@ -36,15 +42,17 @@ prove the engine's logic is real and let you read the full plan:
 
 **Why be this blunt?** Because the alternative — a setup guide that reads like everything
 works — would waste hours of yours hunting for a "connect Gmail" button that isn't built. The
-plan is strong and the hard reasoning core is real and tested (74 automated checks pass). But
-"clone it and onboard your company" is **not yet a walkable path.** This guide narrates the
-*intended* on-ramp end to end, and at every stage tells you plainly: **BUILT** (runs today),
-**PARTIAL** (some real code, gaps remain), or **NOT BUILT** (spec only).
+end-to-end on-ramp **does** run now (302 tests green, the genesis core 74 of them) and you can
+walk it on the sample in five minutes or on your own exported folder. What's still missing for
+a one-click run on your *live* company is the auto-pull connectors, a real model, and a ratify
+UI. This guide narrates the on-ramp end to end and tells you plainly at each stage: **BUILT**
+(runs today), **PARTIAL** (some real code, gaps remain), or **NOT BUILT** (spec only).
 
-**One thing you must decide that I will not decide for you:** there is no software license on
-this repo yet, which legally means "all rights reserved" — nobody but you may use it. You also
-haven't chosen how the engine will reach your real data. Both are in **"Decisions only you can
-make"** at the end. Until the license question is settled, do not make this repo public.
+**One thing you must decide that I will not decide for you:** the repo ships an **Apache-2.0**
+license as a *reversible placeholder* — the open-vs-closed call is still yours and not final
+(see [LICENSE-NOTE.md](LICENSE-NOTE.md)). You also haven't chosen the real model the engine
+will call on your data. Both are in **"Decisions only you can make"** at the end. Until the
+license question is settled, do not make this repo public.
 
 ### The on-ramp at a glance
 
@@ -52,15 +60,16 @@ make"** at the end. Until the license question is settled, do not make this repo
 |---|---|---|---|
 | 0 | Prerequisites (accounts, tools) | partial — you install these | 10–20 min |
 | 1 | Get the repo + make it versioned | **BUILT** — already a git repo with a `.gitignore` | 2 min |
-| 2 | Connect your data sources | **NOT BUILT** — spec only | — |
-| 3 | Run the genesis pass on real data | **NOT BUILT** — spec only | — |
-| 3′ | **Run the genesis DEMO (sample data)** | **BUILT — runs today** | 5 min |
-| 4 | Review & ratify | PARTIAL — packet built, no approve loop | — |
-| 5 | The daily steer loop | **NOT BUILT** — specs only | — |
+| 2 | Connect your data sources | **PARTIAL** — three paths today: export to a folder + `--sources` ([CONNECT.md](CONNECT.md)); the **local Mac agent** for iMessage/WhatsApp ([INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md)); a **cloud routine** for email/Drive/calendar ([CLOUD-ROUTINE.md](CLOUD-ROUTINE.md)). No one-click auto-pull connectors yet. | 10 min |
+| 3 | Run the on-ramp on YOUR data | **BUILT** — `python3 run.py --sources <your folder>` (offline model) | 5 min |
+| 3′ | **Run the on-ramp on the SAMPLE** | **BUILT — runs today** (`python3 run.py`) | 5 min |
+| 4 | Review & ratify | **BUILT (terminal)** — packet + per-proposal ratify prompt; no click-UI yet | — |
+| 5 | The daily steer loop | **BUILT (skill specs)** — the five skills + loop are in `skills/` and `loop/` | — |
 
-**Step 3′** is the whole of the *genesis* engine that runs today. Everything past it (real
-connectors, the steer skills) is the build ahead. The component map and build state are in
-[SYSTEM.md](SYSTEM.md).
+**The fastest path:** `python3 run.py` (Step 3′) walks the whole on-ramp on the bundled sample.
+What's still ahead for a one-click *live*-company run: the auto-pull connectors (Step 2), a real
+model behind the gate, and a ratify UI. The component map and build state are in
+[SYSTEM.md](SYSTEM.md); the real-data walkthrough is in [CONNECT.md](CONNECT.md).
 
 ---
 
@@ -88,19 +97,26 @@ interpreter quirk, not a requirement of the code.
 > Note: when an installer is eventually written, it should target a widely-available Python
 > (3.9–3.12), not a bleeding-edge release that would exclude most users.
 
-### 0b. Accounts you'll *eventually* need (NOT yet wired)
+### 0b. Accounts you'll *eventually* need (most not yet wired)
 
-When the connectors are built (Step 2, not-built), you'll grant read access to the sources you
-want the brain to learn from. None of this is needed for the demo. Plan for:
+Most auto-pull connectors aren't built yet (Step 2); when they are, you'll grant read access to
+the sources you want the brain to learn from. None of this is needed for the demo. Plan for:
 
-- **Email** (e.g. Gmail) — the richest source of "who the people are / what's happening."
+- **Email** (e.g. Gmail) — the richest source of "who the people are / what's happening." The
+  email *adapter* (Sent-folder correspondent harvest + spam-drop) is built + tested today; the
+  scheduled cloud routine that drives it is a stand-up recipe ([CLOUD-ROUTINE.md](CLOUD-ROUTINE.md)),
+  not yet a one-click connector.
 - **Chat** (e.g. Slack) — *note: the Slack connector was retired and needs a full rebuild; see
   gating B4 and the build-state map. Don't assume Slack works.*
 - **Files** (e.g. Google Drive) — working documents.
 - **Calendar** — meetings and the people in them.
 - **Code host** (e.g. GitHub) — feeds the R&D/engineering pillar.
-- **Phone messages** (iMessage / WhatsApp) — macOS-only, partial, hardcoded to one machine
-  today.
+- **Phone messages** (iMessage / WhatsApp) — **already built + tested**: a runnable local Mac
+  agent (`python -m ingest.local.sync`) that reads the on-device chat databases, keeps only
+  people you correspond with (the email-derived allowlist), sanitizes, and writes
+  proposals-only. macOS-only and path-resolved via `mcs_paths` (no hardcoded machine path); it
+  needs a one-time Full Disk Access grant and degrades cleanly off-Mac. See
+  [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md).
 
 **Do not create API keys or place any tokens yet.** There is no code in this repo that reads
 them, and the **hard limit on secrets** (see

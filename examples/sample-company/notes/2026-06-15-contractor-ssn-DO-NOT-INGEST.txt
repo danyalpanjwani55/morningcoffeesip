@@ -1,0 +1,9 @@
+Contractor onboarding scratch (contains PII — should be DROPPED on ingest).
+
+This note deliberately carries a FAKE personal identifier so you can watch the
+privacy gate drop it.
+
+Contractor SSN on file: 123-45-6789  (fake, for the fixture only)  # pragma: allowlist secret
+
+If the on-ramp is working, the run summary counts this file as dropped_private
+and this PII appears nowhere downstream.

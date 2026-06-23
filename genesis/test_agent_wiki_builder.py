@@ -258,7 +258,7 @@ def test_secret_in_corpus_text_raises_on_egress(wiki_root):
     it can reach the model (the prompt is built from corpus excerpts)."""
     corpus = InMemoryCorpus([
         Event("e9", "2026-06-21T08:00:00Z", "email",
-              "api_key = sk-ABCDEF0123456789ABCD", "leaky-thread", "msg1"),
+              "api_key = sk-ABCDEF0123456789ABCD", "leaky-thread", "msg1"),  # pragma: allowlist secret
     ])
     anchors = (Anchor("leaky-thread", "email", "msg1"),)
     from genesis_contracts import PrivateDataEgressError
