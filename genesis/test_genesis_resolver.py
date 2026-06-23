@@ -29,24 +29,27 @@ def make_claim(
     provenance_tier: str = "secondary",
     observed_at: str = "2026-06-20T12:00:00Z",
     summary: str = "",
-    conflict_status: str = "none",
+    conflict_status: str = "aligned",
     omit_tier: bool = False,
 ) -> Claim:
-    """Build a Claim with sensible defaults for the unspecified contract fields.
+    """Build a Claim on the CURRENT 8-field doctrine contract, with sensible
+    defaults for the unspecified fields.
 
-    ``omit_tier=True`` constructs a claim whose ``provenance_tier`` is the
-    dataclass default ("secondary") to model a 'missing tier' input (case 6).
-    """
+    An un-conflicted claim enters as ``conflict_status="aligned"`` (the resolver
+    only escalates to ``disputed`` on a same-tier clash, and stamps
+    ``superseded`` on archived losers). ``omit_tier=True`` constructs a claim
+    whose ``provenance_tier`` is the dataclass default ("secondary") to model a
+    'missing tier' input (case 6)."""
     kwargs = dict(
         claim_id=claim_id,
-        category="test",
-        summary=summary or claim_id,
+        source_anchors=({"path": claim_id, "anchor": "L1"},),
+        asserted_by=(),
         observed_at=observed_at,
-        source_lane="test",
-        source_anchor={"doc": claim_id},
+        last_evidence_change_at=observed_at,
         confidence="high",
-        recency="current",
+        recency_status="current",
         conflict_status=conflict_status,
+        summary=summary or claim_id,
         fact_key=fact_key,
         fact_value=fact_value,
     )
@@ -76,8 +79,8 @@ def test_case1_no_fact_key_passthrough():
 
     assert result.kept == [a, b, c]          # identity + order preserved
     assert result.archived == []
-    # untouched (no conflict_status rewrite)
-    assert all(k.conflict_status == "none" for k in result.kept)
+    # untouched (no conflict_status rewrite) — stays the incoming "aligned"
+    assert all(k.conflict_status == "aligned" for k in result.kept)
 
 
 # --------------------------------------------------------------------------- #
@@ -100,13 +103,15 @@ def test_case2_operator_supersedes_secondary():
     winner = result.kept[0]
     assert winner.claim_id == "op"
     assert winner.fact_value == "A"
-    assert winner.conflict_status == "current"
+    assert winner.conflict_status == "aligned"
 
     assert len(result.archived) == 1
     arch = result.archived[0]
     assert arch.claim.claim_id == "sec"
     assert arch.reason == "superseded"
     assert arch.superseded_by == "op"
+    # the archived loser self-describes its status per the doctrine triad
+    assert arch.claim.conflict_status == "superseded"
 
 
 # --------------------------------------------------------------------------- #
@@ -149,11 +154,12 @@ def test_case4_three_distinct_cross_tier():
     assert len(result.kept) == 1
     winner = result.kept[0]
     assert winner.claim_id == "op"
-    assert winner.conflict_status == "current"
+    assert winner.conflict_status == "aligned"
 
     assert _archived_ids(result) == {"pri", "sec"}
     assert all(a.reason == "superseded" for a in result.archived)
     assert all(a.superseded_by == "op" for a in result.archived)
+    assert all(a.claim.conflict_status == "superseded" for a in result.archived)
 
 
 # --------------------------------------------------------------------------- #
@@ -202,9 +208,10 @@ def test_case6_missing_tier_treated_secondary():
     assert len(result.kept) == 1
     winner = result.kept[0]
     assert winner.claim_id == "op"
-    assert winner.conflict_status == "current"
+    assert winner.conflict_status == "aligned"
     assert _archived_ids(result) == {"missing"}
     assert result.archived[0].reason == "superseded"
+    assert result.archived[0].claim.conflict_status == "superseded"
 
 
 # --------------------------------------------------------------------------- #
@@ -226,16 +233,20 @@ def test_case7_agreement_dedup_not_disputed():
     assert len(result.kept) == 1
     winner = result.kept[0]
     assert winner.fact_value == "SAME"
-    # newest representative kept; conflict_status NOT promoted to disputed
+    # newest representative kept; conflict_status NOT promoted to disputed —
+    # agreement keeps the incoming "aligned".
     assert winner.claim_id == "b"
     assert winner.conflict_status != "disputed"
-    assert winner.conflict_status == "none"
+    assert winner.conflict_status == "aligned"
 
     assert len(result.archived) == 1
     arch = result.archived[0]
     assert arch.claim.claim_id == "a"
     assert arch.reason == "duplicate_value"
     assert arch.superseded_by == "b"
+    # a pure duplicate (same value, no change) is NOT a supersession -> the
+    # archived copy keeps its own status, it is not stamped "superseded".
+    assert arch.claim.conflict_status == "aligned"
 
 
 # --------------------------------------------------------------------------- #
@@ -257,7 +268,7 @@ def test_case8_passthrough_and_pair_in_one_call():
     assert note_kept is note                               # untouched identity
 
     op_kept = next(c for c in result.kept if c.claim_id == "op")
-    assert op_kept.conflict_status == "current"
+    assert op_kept.conflict_status == "aligned"
     assert _archived_ids(result) == {"sec"}
     assert result.archived[0].reason == "superseded"
 
@@ -285,8 +296,8 @@ def test_input_not_mutated():
     before = (op, sec)
     resolve_claims([op, sec])
     # frozen dataclasses can't be mutated, but assert the originals are intact
-    assert op.conflict_status == "none"
-    assert sec.conflict_status == "none"
+    assert op.conflict_status == "aligned"
+    assert sec.conflict_status == "aligned"
     assert before == (op, sec)
 
 
@@ -302,13 +313,17 @@ def test_claim_is_frozen():
 
 def test_claim_contract_field_order_preserved():
     names = [f.name for f in dataclasses.fields(Claim)]
-    # Original recovered contract order, then the two appended provenance fields.
+    # The 8-field doctrine contract first (in contract order), then the internal
+    # resolver-mechanics fields. The deprecated v1 fields (category, source_lane,
+    # singular source_anchor, recency, deadline) are gone.
     assert names == [
-        "claim_id", "category", "summary", "observed_at", "source_lane",
-        "source_anchor", "confidence", "recency", "conflict_status",
-        "participants", "owner", "deadline", "competing_claims",
-        "fact_key", "fact_value",
-        "provenance_tier", "asserted_by",
+        # --- doctrine contract (8) ---
+        "claim_id", "source_anchors", "asserted_by", "observed_at",
+        "last_evidence_change_at", "confidence", "recency_status",
+        "conflict_status",
+        # --- internal resolver mechanics ---
+        "summary", "participants", "owner", "competing_claims",
+        "fact_key", "fact_value", "provenance_tier",
     ]
 
 

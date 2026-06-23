@@ -26,34 +26,75 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # --------------------------------------------------------------------------- #
-# 1. The Claim contract (verbatim from the recovered populator) + 2 new fields #
+# 1. The Claim contract (the CURRENT canonical doctrine contract)              #
 # --------------------------------------------------------------------------- #
+#
+# This is the 8-field claim contract from the brain doctrine
+# (generated-pillar-projections-v1.md "## Claim Contract"):
+#
+#     claim_id, source_anchors (PLURAL list of {path, anchor}), asserted_by
+#     (list of slugs), observed_at, last_evidence_change_at, confidence,
+#     recency_status (current|stale|unknown), conflict_status
+#     (aligned|disputed|superseded).
+#
+# The other fields below are INTERNAL resolver mechanics, NOT part of the
+# emitted doctrine contract: they let resolve_claims tier, group, and surface
+# conflicts (provenance_tier / fact_key / fact_value / competing_claims), and
+# carry context the pipeline needs (summary / participants / owner). The
+# deprecated v1 fields (source_lane, recency, category, deadline, the singular
+# source_anchor dict) were dropped: the shipped shape that carried them was the
+# wrong contract.
+
+# Allowed enum values for the two doctrine status fields (the conformance test
+# pins these). recency_status gained "unknown"; conflict_status is the
+# aligned|disputed|superseded triad (no legacy "none"/"current").
+RECENCY_STATUS_VALUES: frozenset[str] = frozenset({"current", "stale", "unknown"})
+CONFLICT_STATUS_VALUES: frozenset[str] = frozenset(
+    {"aligned", "disputed", "superseded"}
+)
+
+# The exact field names the emitted doctrine contract carries (the conformance
+# test asserts a resolved/emitted claim exposes EXACTLY these eight).
+DOCTRINE_CONTRACT_FIELDS: tuple[str, ...] = (
+    "claim_id",
+    "source_anchors",
+    "asserted_by",
+    "observed_at",
+    "last_evidence_change_at",
+    "confidence",
+    "recency_status",
+    "conflict_status",
+)
 
 
 @dataclass(frozen=True)
 class Claim:
-    """A single dated, sourced fact. Field names/order match the recovered
-    upstream populator's contract EXACTLY; the two provenance
-    fields are appended (keeps ``frozen=True``, keeps positional order)."""
+    """A single dated, sourced fact, aligned to the CURRENT doctrine contract.
 
+    The first block is the 8-field doctrine contract (audit-grade metadata that
+    rides into the generated pillar sections). The second block is internal
+    resolver mechanics — needed to tier/group/surface conflicts, never emitted
+    as part of the contract. ``frozen=True`` is preserved."""
+
+    # --- the 8-field doctrine contract -------------------------------------- #
     claim_id: str
-    category: str
-    summary: str
-    observed_at: str            # ISO-8601 UTC, e.g. "2026-06-20T14:03:00Z"
-    source_lane: str
-    source_anchor: dict[str, str]
-    confidence: str             # "high" | "medium" | "low"
-    recency: str                # "current" | "stale"
-    conflict_status: str        # "none" | "disputed" (today)
+    # PLURAL — list of {"path": ..., "anchor": ...}. Replaces the deprecated
+    # singular ``source_anchor`` dict.
+    source_anchors: tuple[dict[str, str], ...]
+    asserted_by: tuple[str, ...]        # person/org slugs (PLURAL per contract)
+    observed_at: str                    # ISO-8601, e.g. "2026-06-20T14:03:00Z"
+    last_evidence_change_at: str        # ISO-8601 — when the evidence last moved
+    confidence: str                     # "high" | "medium" | "low"
+    recency_status: str                 # "current" | "stale" | "unknown"
+    conflict_status: str                # "aligned" | "disputed" | "superseded"
+    # --- internal resolver mechanics (NOT part of the emitted contract) ------ #
+    summary: str = ""
     participants: tuple[str, ...] = ()
     owner: str | None = None
-    deadline: str | None = None
     competing_claims: tuple[dict[str, Any], ...] = ()
-    fact_key: str | None = None    # conflicts are detected on this
-    fact_value: str | None = None  # ... and this
-    # --- appended by BUILD-SPEC-01 (provenance tier) ---
-    provenance_tier: str = "secondary"   # "operator" | "primary" | "secondary"
-    asserted_by: str | None = None       # who/what asserted it (archive note)
+    fact_key: str | None = None         # conflicts are detected on this
+    fact_value: str | None = None       # ... and this
+    provenance_tier: str = "secondary"  # "operator" | "primary" | "secondary"
 
 
 @dataclass(frozen=True)
@@ -164,7 +205,14 @@ def _best(group: list[Claim]) -> Claim:
 
 
 def _arch(c: Claim, reason: str, winner_id: str) -> ArchivedClaim:
-    return ArchivedClaim(claim=c, reason=reason, superseded_by=winner_id)
+    """Archive a loser. A true supersession (a newer/higher-tier value won)
+    stamps ``conflict_status="superseded"`` on the archived copy so the archived
+    record self-describes per the doctrine triad. A plain ``duplicate_value``
+    (agreement, no value change) keeps the claim's own status untouched."""
+    archived_copy = c
+    if reason in ("superseded", "superseded_lower_tier"):
+        archived_copy = _replace(c, conflict_status="superseded")
+    return ArchivedClaim(claim=archived_copy, reason=reason, superseded_by=winner_id)
 
 
 def _replace(c: Claim, **changes: Any) -> Claim:
@@ -178,19 +226,27 @@ def resolve_claims(claims: list[Claim]) -> ResolveResult:
     Pure + deterministic: same input -> byte-identical output, no ``now()`` /
     randomness. Runs AFTER dedupe, BEFORE detect_conflicts.
 
-    Behavior (BUILD-SPEC-01 §3):
+    conflict_status here is the doctrine triad aligned|disputed|superseded:
+      * a resolved cross-tier winner is ``aligned`` (the evidence agrees on one
+        current truth — NOT the legacy "current");
+      * an archived loser is ``superseded`` (stamped on the archived copy);
+      * a genuine same-tier clash stays ``disputed``.
+
+    Behavior (BUILD-SPEC-01 §3, re-mapped to the doctrine triad):
       * Claims with no ``fact_key`` cannot conflict -> passed through untouched.
       * Within a ``fact_key`` group:
           - <= 1 distinct ``fact_value`` (agreement): keep the best
             representative, archive the rest ``reason="duplicate_value"``.
           - >= 2 distinct values, top two cross-tier: the highest-tier newest
-            claim supersedes everyone below -> kept ``conflict_status="current"``,
-            losers archived ``reason="superseded"``. No dispute.
+            claim supersedes everyone below -> kept ``conflict_status="aligned"``,
+            losers archived ``reason="superseded"`` and stamped
+            ``conflict_status="superseded"`` on the archived copy. No dispute.
           - >= 2 distinct values, top two SAME tier: genuine dispute -> winner
             kept ``conflict_status="disputed"`` carrying the same-tier rivals in
             ``competing_claims``; strictly-lower-tier claims archived
-            ``reason="superseded_lower_tier"``. Same-tier rivals are NOT
-            archived (preserved via competing_claims).
+            ``reason="superseded_lower_tier"`` and stamped
+            ``conflict_status="superseded"``. Same-tier rivals are NOT archived
+            (preserved via competing_claims).
     """
     passthrough = [c for c in claims if not c.fact_key]
 
@@ -224,8 +280,9 @@ def resolve_claims(claims: list[Claim]) -> ResolveResult:
         runner = ordered[1]
 
         if _tier_rank(runner.provenance_tier) < _tier_rank(winner.provenance_tier):
-            # Cross-tier: winner supersedes everyone below it. No dispute.
-            kept.append(_replace(winner, conflict_status="current"))
+            # Cross-tier: winner supersedes everyone below it. No dispute; the
+            # evidence now agrees on one current truth -> "aligned".
+            kept.append(_replace(winner, conflict_status="aligned"))
             archived += [
                 _arch(c, "superseded", winner.claim_id) for c in ordered[1:]
             ]
@@ -240,7 +297,7 @@ def resolve_claims(claims: list[Claim]) -> ResolveResult:
                 competing_claims=tuple(
                     {
                         "statement": c.summary,
-                        "source_anchor": c.source_anchor,
+                        "source_anchors": c.source_anchors,
                         "fact_value": c.fact_value,
                         "provenance_tier": c.provenance_tier,
                     }
@@ -263,16 +320,62 @@ def resolve_claims(claims: list[Claim]) -> ResolveResult:
 # --------------------------------------------------------------------------- #
 
 
+def _coerce_anchor_list(value: Any) -> tuple[dict[str, str], ...]:
+    """Coerce a source-anchors value into the contract's plural tuple form.
+
+    Accepts the plural list (the contract), or a single dict / the deprecated
+    singular ``source_anchor`` dict (mapped to a one-element tuple)."""
+    if value is None:
+        return ()
+    if isinstance(value, dict):
+        return (value,)
+    return tuple(value)
+
+
 def _claim_from_dict(d: dict[str, Any]) -> Claim:
-    """Build a Claim from a plain dict (demo/sample loader). Tuple-typed fields
-    are coerced from lists; the tier is derived if absent."""
+    """Build a Claim from a plain dict (demo/sample loader). Coerces the
+    contract's tuple-typed fields from lists, maps a deprecated singular
+    ``source_anchor`` into plural ``source_anchors``, derives the tier and the
+    two added timestamp/status fields when absent."""
     data = dict(d)
+
+    # source_anchors (plural) is the contract; accept a legacy singular dict, or
+    # default to empty when neither is present (a no-ground claim).
+    if "source_anchors" in data:
+        data["source_anchors"] = _coerce_anchor_list(data["source_anchors"])
+    elif "source_anchor" in data:
+        data["source_anchors"] = _coerce_anchor_list(data.get("source_anchor"))
+    else:
+        data["source_anchors"] = ()
+
+    # asserted_by is a list of slugs; accept a bare string, None, or absence.
+    ab = data.get("asserted_by")
+    if ab is None:
+        data["asserted_by"] = ()
+    elif isinstance(ab, str):
+        data["asserted_by"] = (ab,) if ab else ()
+    else:
+        data["asserted_by"] = tuple(ab)
+
     if "participants" in data and isinstance(data["participants"], list):
         data["participants"] = tuple(data["participants"])
     if "competing_claims" in data and isinstance(data["competing_claims"], list):
         data["competing_claims"] = tuple(data["competing_claims"])
+
+    # Derive the provenance tier from the (legacy) lane/source if not stamped.
     if "provenance_tier" not in data:
         data["provenance_tier"] = tier_from_item(data)
+
+    # Map the legacy ``recency`` field onto ``recency_status`` if only the old
+    # one is present; default to "current".
+    if "recency_status" not in data:
+        data["recency_status"] = data.get("recency", "current")
+
+    # last_evidence_change_at defaults to observed_at when the source has no
+    # separate evidence-change timestamp.
+    if "last_evidence_change_at" not in data:
+        data["last_evidence_change_at"] = data.get("observed_at", "")
+
     allowed = {f.name for f in dataclasses.fields(Claim)}
     return Claim(**{k: v for k, v in data.items() if k in allowed})
 

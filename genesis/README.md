@@ -3,11 +3,11 @@
 Self-contained, stdlib-only genesis-engine code for the generalized
 repo. Two slices live here:
 
-- **BUILD-SPEC-01 — `genesis_resolver.py`**: when two facts about the same
+- **The claim resolver — `genesis_resolver.py`**: when two facts about the same
   thing disagree, decide which is *current* (operator > primary > secondary;
   newer wins within a tier), archive the loser (never delete), and only mark a
   genuine `disputed` when two same-tier facts clash. Pure + deterministic.
-- **BUILD-SPEC-02 — the intelligence layer** (`genesis_pipeline.py`,
+- **The intelligence layer** (`genesis_pipeline.py`,
   `meta_initiative_deriver.py`, `roster_proposer.py`, `review_surface.py`,
   `genesis_contracts.py`): after the brain is populated, propose the
   meta-initiatives + agent roster + an operator review screen. Every proposal
@@ -23,8 +23,8 @@ python genesis_resolver.py      # resolver demo on sample_claims.json
 python genesis_pipeline.py      # full-pipeline demo (canned LLM, in-memory corpus)
 ```
 
-> This machine's Homebrew Python has a broken `pyexpat` (so `pip`/`pytest`
-> won't install there). Use the system interpreter, which is healthy:
+> If your `python3` has a broken `pyexpat` (some newer builds do, which stops
+> `pip`/`pytest` from starting), use the system interpreter instead:
 > `/usr/bin/python3 -m pytest -q`. The code uses
 > `from __future__ import annotations`, so it runs on Python 3.9+ despite the
 > 3.10-style type hints.

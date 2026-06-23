@@ -2,7 +2,7 @@
 
 ## In plain terms
 
-**The big decision — keep this for-profit/closed, or open it up — is still YOURS, and it is NOT made.** I (the agent) did **not** decide it. What's on disk right now is a *recommendation only*: I put the **Apache License 2.0** in [`LICENSE`](LICENSE) as a placeholder so the repo isn't left in legal limbo, but it is **fully reversible** — nothing is published, the repo isn't even on the internet yet, and swapping or removing the file is a one-line change. **GATED-FOR-OPERATOR: your final call.**
+**The big decision — keep this for-profit/closed, or open it up — is still YOURS, and it is NOT made.** I (the agent) did **not** decide it. What's on disk right now is a *recommendation only*: the **Apache License 2.0** sits in [`LICENSE`](../LICENSE) as a placeholder so the repo isn't left in legal limbo, but it is **fully reversible** — nothing is published, the repo isn't even on the internet yet, and swapping or removing the file is a one-line change. **GATED-FOR-OPERATOR: your final call.**
 
 **What a license actually does, plainly.** A license is the permission slip you staple to code so other people know what they're allowed to do with it. With **no** license, the legal default is the *opposite* of "free to use" — by default nobody else may legally copy, run, or build on your code, even if it's sitting in a public folder. So you have to pick one on purpose.
 
@@ -16,11 +16,11 @@
 **What you need to decide / do (none of this is done):**
 1. **The core call:** open-source vs. for-profit/closed. *(GATED-FOR-OPERATOR.)*
 2. **If open-source:** confirm Apache-2.0, or tell me to switch to MIT.
-3. **Fill in the copyright owner.** The Apache file's notice currently uses bracketed placeholders (`[yyyy] [name of copyright owner]`). I deliberately did **not** invent a name or a company — you need to put the real copyright holder there (you personally, or a company entity if one exists). I won't guess that.
+3. **Confirm the copyright owner.** The `LICENSE` currently names an individual copyright holder. Confirm that's who you want on the notice (you personally, or a company entity if one exists), and switch it to the entity if that's more appropriate before publishing.
 4. **(If it matters to you)** decide whether to also add a `NOTICE` file — optional under Apache-2.0, used to carry attribution lines.
 
 **One caveat I'm flagging, not deciding:** picking a permissive license now and going closed *later* is hard-to-impossible to fully reverse once other people have copied the code (they keep their rights to the version they got). The safe order, if you're unsure, is: **stay unpublished and undecided** (where you are now), or **go closed first** — you can always loosen to open later, but you can't easily tighten from open to closed. That asymmetry is the real reason this is a genuine gate and not a rubber-stamp.
 
 ---
 
-*Type-2 (for-the-operator) doc per this repo's two-document-types doctrine. The agent did not cross the for-profit-vs-open-source fork; it recorded the recommendation and stopped, per the hard limits in [`CLAUDE.md`](CLAUDE.md) §4.*
+*Type-2 (for-the-operator) doc per this repo's two-document-types doctrine. The agent did not cross the for-profit-vs-open-source fork; it recorded the recommendation and stopped, per the hard limits in [`CLAUDE.md`](../CLAUDE.md) §4.*

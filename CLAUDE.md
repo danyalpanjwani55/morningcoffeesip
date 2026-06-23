@@ -22,11 +22,10 @@ The thing being reused is **not** a filled-in brain — those are custom per com
 What's reused is **the machine that manufactures a brain from a new company's raw data.**
 Ingest is not a feature; it is the ignition.
 
-This file governs *how work happens here.* The **what** lives in the build docs:
-`GENERALIZED-REPO-MANIFEST.md` (the canonical
-component + doctrine list), `PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md` (the product map +
-build state), and `SOTA-GENESIS-ENGINE-SPEC.md` (the genesis engine). Read the relevant one
-before substantive work; don't work from memory.
+This file governs *how work happens here.* The **what** — the component map, the product flow,
+and the build state — lives in the public docs: [`docs/SYSTEM.md`](docs/SYSTEM.md) (what the
+machine is made of) and [`docs/SETUP.md`](docs/SETUP.md) (how to stand it up). Read the
+relevant one before substantive work; don't work from memory.
 
 ---
 
@@ -72,8 +71,7 @@ Steps 1–2 do most of the work. Reach for them before any clever engineering.
 ## 3. The portable doctrine (the rules every clone inherits)
 
 These are the load-bearing rules of the system. They are domain-agnostic. Honor them in every
-skill, engine, and change. (Source-of-truth and detail:
-`GENERALIZED-REPO-MANIFEST.md` §(i).)
+skill, engine, and change.
 
 - **Two-document-types.** Every deliverable is exactly one of two kinds, never both:
   - **FOR-AI (Type-1):** dense, source-anchored, written for a machine to consume.

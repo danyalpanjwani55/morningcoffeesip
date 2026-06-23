@@ -3,9 +3,7 @@
 *The step-by-step guide for a technical-ish founder cloning this repo to stand up their own
 company brain. Type-2 (FOR-THE-OPERATOR): plain-English, opens "In plain terms," every
 technical term explained the first time it appears. Honest about what's built vs not — every
-stage is cross-checked against the ship-gating review
-([SHIP-GATING-REVIEW.md](SHIP-GATING-REVIEW.md))
-and the live files in `genesis/`.*
+stage is cross-checked against the live files in `genesis/`.*
 
 ---
 
@@ -38,7 +36,7 @@ prove the engine's logic is real and let you read the full plan:
 
 **Why be this blunt?** Because the alternative — a setup guide that reads like everything
 works — would waste hours of yours hunting for a "connect Gmail" button that isn't built. The
-plan is strong and the hard reasoning core is real and tested (42 automated checks pass). But
+plan is strong and the hard reasoning core is real and tested (74 automated checks pass). But
 "clone it and onboard your company" is **not yet a walkable path.** This guide narrates the
 *intended* on-ramp end to end, and at every stage tells you plainly: **BUILT** (runs today),
 **PARTIAL** (some real code, gaps remain), or **NOT BUILT** (spec only).
@@ -53,16 +51,16 @@ make"** at the end. Until the license question is settled, do not make this repo
 | Step | Stage | Status today | Time |
 |---|---|---|---|
 | 0 | Prerequisites (accounts, tools) | partial — you install these | 10–20 min |
-| 1 | Get the repo + make it versioned | NOT BUILT (needs `git init`) | 5 min |
+| 1 | Get the repo + make it versioned | **BUILT** — already a git repo with a `.gitignore` | 2 min |
 | 2 | Connect your data sources | **NOT BUILT** — spec only | — |
 | 3 | Run the genesis pass on real data | **NOT BUILT** — spec only | — |
 | 3′ | **Run the genesis DEMO (sample data)** | **BUILT — runs today** | 5 min |
 | 4 | Review & ratify | PARTIAL — packet built, no approve loop | — |
 | 5 | The daily steer loop | **NOT BUILT** — specs only | — |
 
-The single green row — **Step 3′** — is the whole of what runs today. Everything else is the
-build ahead, sequenced for whoever builds it (you or an agent) in
-[GENERALIZED-REPO-MANIFEST.md](GENERALIZED-REPO-MANIFEST.md).
+**Step 3′** is the whole of the *genesis* engine that runs today. Everything past it (real
+connectors, the steer skills) is the build ahead. The component map and build state are in
+[SYSTEM.md](SYSTEM.md).
 
 ---
 
@@ -77,21 +75,18 @@ build ahead, sequenced for whoever builds it (you or an agent) in
 | **Claude Code** (or another agent runner) | The *skills* (ramble/vision/etc.) are run through an AI coding agent. Not needed for the genesis demo. | per its own install |
 | **GitHub CLI `gh`** (optional) | Convenient if you later publish the repo. | `gh --version` |
 
-**A real Python gotcha, verified on this machine — don't skip.** The genesis code declares
+**A Python gotcha worth knowing — don't skip.** The genesis code declares
 `from __future__ import annotations` at the top of every file, which is a one-line switch that
 lets modern type-hint syntax run on **older** Pythons. That means it runs fine on **Python
-3.9+**. But on *this* development machine, the newest installed Python (3.14) has a **broken
+3.9+**. One thing to watch: some newer Python builds (seen with 3.14) ship a **broken
 `pip`/`pytest`** (a damaged `pyexpat` component — `pyexpat` is the built-in XML reader that
-the test tool needs to start). The **system Python at `/usr/bin/python3` (3.9.6) is healthy**
-and is what actually runs the tests and demos here. The practical rule: **if `pytest` or `pip`
-fails with a `pyexpat` error, run the command with `/usr/bin/python3` instead of plain
-`python3`.** On your own machine, any healthy Python 3.9+ works — this is a quirk of the dev
-box, not a requirement of the code.
+the test tool needs to start). The practical rule: **if `pytest` or `pip` fails with a
+`pyexpat` error, run the command with the system Python at `/usr/bin/python3` instead of
+plain `python3`.** Any healthy Python 3.9+ works — the broken-`pyexpat` case is an
+interpreter quirk, not a requirement of the code.
 
-> Note: the gating review (B12) flags that an earlier build artifact was pinned to **Python
-> 3.14**, which is bleeding-edge and would exclude most users. The current source does **not**
-> require 3.14 — it targets 3.9+. When an installer is eventually written, it should target a
-> widely-available Python (3.9–3.12), not 3.14.
+> Note: when an installer is eventually written, it should target a widely-available Python
+> (3.9–3.12), not a bleeding-edge release that would exclude most users.
 
 ### 0b. Accounts you'll *eventually* need (NOT yet wired)
 
@@ -109,46 +104,37 @@ want the brain to learn from. None of this is needed for the demo. Plan for:
 
 **Do not create API keys or place any tokens yet.** There is no code in this repo that reads
 them, and the **hard limit on secrets** (see
-[CLAUDE.md](CLAUDE.md) §4) means tokens must never
-land in a committed file. When connectors exist, they'll be placed in a git-ignored location —
-and the `.gitignore` that protects them **does not exist yet** (gating B6). Wiring real
-accounts now would risk leaking a credential into history with nothing to catch it.
+[CLAUDE.md](../CLAUDE.md) §4) means tokens must never
+land in a committed file. When connectors exist, they'll be placed in a git-ignored location;
+the repo's `.gitignore` already lists the token/credential patterns that protect them. Even
+so, wiring real accounts before the connectors exist gains nothing.
 
 ### 0c. Read the plan (5 minutes, high payoff)
 
-Before building anything past the demo, skim, in this order:
+Before building anything past the demo, skim:
 
-1. [PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md](PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md)
-   — the whole product mapped, with a per-component "% built" table.
-2. [GENERALIZED-REPO-MANIFEST.md](GENERALIZED-REPO-MANIFEST.md)
-   — the canonical component + doctrine list and the v1 build order.
-3. [SHIP-GATING-REVIEW.md](SHIP-GATING-REVIEW.md)
-   — the file-verified list of what blocks making this public (the honest blocker list this
-   guide cross-checks against).
-4. [SOTA-GENESIS-ENGINE-SPEC.md](SOTA-GENESIS-ENGINE-SPEC.md)
-   — how the genesis engine is meant to work end to end.
+1. [SYSTEM.md](SYSTEM.md) — the whole product mapped: every feature, agent, skill, and tool,
+   with the build state of each piece.
+2. [CLAUDE.md](../CLAUDE.md) — the doctrine, coding rules, and hard limits every clone
+   inherits.
+
+*(Deeper build specs, the genesis-engine spec, and the ship-gating blocker list are kept in
+the maintainer's internal planning docs, not published with the repo.)*
 
 ---
 
-## Step 1 — Get the repo and make it versioned · NOT BUILT (needs one command)
+## Step 1 — Get the repo and make it versioned · BUILT (already a git repo)
 
-**Status:** This folder is **not a git repository yet** (gating **B1** — verified: `git
-rev-parse` reports "not a git repository"). You cannot branch it, version it, or push it to
-GitHub until that's fixed.
+**Status:** this folder **is** a git repository, with a `.gitignore` already in place that
+keeps tokens, credentials, `.pyc` clutter, `chat.db`, and `genesis/out/` scratch out of
+history. A `LICENSE` and `README.md` are present. You can branch and version it now.
 
-**The ordering that matters (do not reorder):** create the ignore file **before** the first
-commit, so nothing sensitive can ever enter history.
+**Still yours to own before publishing:** pushing this repo to a remote (e.g. GitHub) is a
+state change the operator decides — see "Decisions only you can make." Confirm the license
+choice fits before going public.
 
-1. **Add a `.gitignore` first** (gating **B6**). At minimum it must ignore: `__pycache__/`,
-   `*.pyc`, `.env*`, `*token*.json`, `credentials*.json`, `*.sqlite`, `chat.db`, and
-   `genesis/out/` (genesis scratch output). This protects future tokens and the compiled-Python
-   clutter from being committed.
-2. **Then** `git init` and make the first commit.
-3. **Add a `LICENSE`** before going public (gating **B2** — see "Decisions only you can make").
-
-> **This guide does not run `git init` for you.** Per the repo's hard limits, initializing the
-> repo and making commits are state changes the operator owns — and the `.gitignore` must be
-> authored deliberately first. This is a 5-minute step, but it's yours to take.
+> **This guide does not push for you.** Per the repo's hard limits, publishing the repo to a
+> remote is the operator's call. The local versioning is already set up.
 
 ---
 
@@ -185,8 +171,7 @@ company.
 - there's no scaffolder to create your empty pillar/agent tree first (gating/build-state
   Component 2; the cold-start scaffold ≈ 2%).
 
-**What the full genesis pass is designed to do** (see
-[SOTA-GENESIS-ENGINE-SPEC.md](SOTA-GENESIS-ENGINE-SPEC.md)):
+**What the full genesis pass is designed to do:**
 read your entire history in one pass → turn each item into a sourced **claim** → **resolve**
 which claims are current (your own word beats an inferred third-party claim; newer beats older;
 genuine ties are flagged, not silently merged) → write tidy pillar drafts → **derive your
@@ -211,7 +196,7 @@ data, using a scripted stand-in for the AI (no internet, no accounts, nothing pr
 From the repo, run these (using the healthy system Python per Step 0a):
 
 ```sh
-# 1) Run the automated checks — proves the logic works (verified: 42 passed)
+# 1) Run the automated checks — proves the logic works (verified: 74 passed)
 /usr/bin/python3 -m pytest -q genesis
 
 # 2) The conflict-resolver demo — watch it pick the current fact and archive the stale one
@@ -224,7 +209,7 @@ From the repo, run these (using the healthy system Python per Step 0a):
 
 **What you'll see, and why it matters:**
 
-- **The tests** end with `42 passed`. They check the *rules*, not the AI's taste: a proposal
+- **The tests** end with `74 passed`. They check the *rules*, not the AI's taste: a proposal
   with no evidence is dropped; nothing is ever auto-applied (everything is marked "proposed");
   an agent already on the base team is never re-proposed; and — importantly — feeding the
   **egress gate** a string containing a secret or personal info raises an error
@@ -239,18 +224,13 @@ From the repo, run these (using the healthy system Python per Step 0a):
   are written under `genesis/out/` (which your `.gitignore` should exclude).
 
 **Read the genesis code's own quickstart:**
-[genesis/README.md](genesis/README.md).
+[genesis/README.md](../genesis/README.md).
 
-> **Honesty note vs. the gating review.** The gating review (B4/B5, written 2026-06-22 18:51)
-> states there is "no product code" and only a stray compiled file. That snapshot is now
-> **stale**: the full genesis source landed minutes later (files dated 18:49–18:55) and is
-> verified runnable here (42 tests green, both demos produce sensible output). So the gating
-> review's "ship-readiness ~3%" headline still holds for *the product as a whole* (no
-> connectors, no skills, no installer, no license), but its specific "zero source code" /
-> "missing resolver source" claims are **superseded** — the genesis engine core is present and
-> works. The related GATED-FOR-OPERATOR fork (rebuild vs. delete the resolver source) appears
-> **already resolved** on disk in favor of "the source exists." See the reconciliation note in
-> "Decisions only you can make."
+> **Honest scope note.** The genesis engine *core* is present and runnable (the resolver and
+> the intelligence layer, 74 tests green, both demos produce sensible output). The *product as
+> a whole* is still early: the real connectors and the daily-steer skills are designed but not
+> yet built into this repo. So "the engine's reasoning works" is true today; "clone it and
+> onboard your company end to end" is not yet a walkable path.
 
 ---
 
@@ -307,16 +287,13 @@ here yet.**
   private-data egress block) are real and tested. That is genuinely valuable, and it's the
   thing to demo.
 - **Designed, not built:** connecting real sources, running genesis on your real company, the
-  click-to-ratify review surface, the persona generator, and every daily-steer skill —
-  plus the packaging (license, `.gitignore`, `git init`, installer, skill namespace) that
-  makes it a thing a stranger can clone and run.
-- **The build path** for closing that gap is sequenced in
-  [GENERALIZED-REPO-MANIFEST.md](GENERALIZED-REPO-MANIFEST.md)
-  (the v1 build order) and gated by
-  [SHIP-GATING-REVIEW.md](SHIP-GATING-REVIEW.md)
-  (the blocker list). The cheapest high-signal next moves are the minutes-long packaging steps
-  (`.gitignore` → `git init` → license → README → root `CLAUDE.md`, already present) and then
-  the real build (lift the ingest spine → wire genesis to real data behind the egress gate).
+  click-to-ratify review surface, the persona generator, and every daily-steer skill — plus
+  the remaining packaging (the installer and the skill namespace) that makes it a thing a
+  stranger can clone and run end to end. (The git repo, `.gitignore`, `LICENSE`, `README`, and
+  root `CLAUDE.md` are already present.)
+- **The build path** for closing that gap, component by component, is mapped in
+  [SYSTEM.md](SYSTEM.md). The real build is: lift the ingest spine → wire genesis to real data
+  behind the egress gate → port the steer skills.
 
 ---
 
@@ -324,11 +301,10 @@ here yet.**
 
 These are forks this guide will **not** decide for you. They block making the repo public.
 
-1. **Choose a software license** (gating **B2**). With no `LICENSE` file, the legal default is
-   "all rights reserved" — nobody but you may use, copy, or modify this. For a tool like this,
-   the conventional permissive choices are **MIT** (simplest) or **Apache-2.0** (also grants
-   patent rights, worth weighing given the genesis-engine IP). **Pick one before going public.**
-   *(Until then, keep the repo private.)*
+1. **Confirm the software license.** This repo ships an **Apache-2.0** `LICENSE` (a permissive
+   license that also grants patent rights — worth having given the genesis-engine IP). Confirm
+   that choice fits your intent before publishing; if you'd prefer something else (e.g. **MIT**,
+   simpler), swap the `LICENSE` file first. The copyright line in it is yours to set.
 
 2. **Decide how the engine reaches your real data — and which AI it uses.** The engine runs
    today against sample data with a fake model. Going live means (a) building/lifting the
@@ -337,23 +313,12 @@ These are forks this guide will **not** decide for you. They block making the re
    the egress gate, and raw private company content must never leave (this is already enforced
    in code and tested). This is a plan-and-build decision, not a one-liner.
 
-3. **Reconciliation to confirm (informational — already resolved on disk, flagged for your
-   awareness).** The gating review's open **GATED-FOR-OPERATOR** item asked whether the missing
-   `genesis_resolver.py` source had been *lost* or *intentionally cleaned*. As of now the
-   **full source is present and runnable** (`genesis/genesis_resolver.py` +
-   `genesis_pipeline.py` + siblings + tests, all dated 2026-06-22 18:49–18:55, 42 tests green).
-   So that fork reads as **resolved in favor of "rebuilt/kept."** This guide changed nothing in
-   `genesis/`; if that resolution was *not* intentional, that's yours to confirm. Either way,
-   the one durable to-do from it: the old compiled `.pyc` must never be committed — your
-   `.gitignore` (Step 1) handles that.
+3. **Decide what to publish.** The genesis engine core (`genesis/`) is present, runnable, and
+   tested (74 tests green). Before going public, confirm you're comfortable shipping the sample
+   corpus and the demo output as-is, and that no compiled `.pyc` or local scratch is committed —
+   the repo's `.gitignore` already excludes those.
 
 ---
 
-*Rails honored: wrote only this file under
-`docs/`. No `git init`/commit/push/merge, no
-deletes, no edits to existing files, no external sends, no money/secrets, no access to the
-private source brain. Built-vs-not status for every stage was verified against the live
-`genesis/` files (42 tests pass; resolver + pipeline demos run) and cross-checked against
-`SHIP-GATING-REVIEW.md`. The one ambiguity encountered — the gating review's resolver-source
-fork — was found already resolved on disk and is recorded above as GATED-FOR-OPERATOR rather
-than acted on.*
+*Built-vs-not status for every stage was verified against the live `genesis/` files (74 tests
+pass; resolver + pipeline demos run).*

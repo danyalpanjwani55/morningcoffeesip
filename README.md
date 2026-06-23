@@ -13,7 +13,7 @@ time.
 
 > **Status (be honest with yourself before you clone):** this is an early,
 > in-progress build. **The genesis engine's brain — the resolver + the
-> proposal/intelligence layer — is real, runnable, and tested today** (42
+> proposal/intelligence layer — is real, runnable, and tested today** (74
 > passing tests; see [Quickstart](#quickstart)). The rest of the system (the
 > data connectors, the five steering commands, the installer, the guided
 > setup) is **specified in detail but not yet ported into this repo.** What you
@@ -169,14 +169,12 @@ Be precise about this so you're not surprised after you clone.
 | The guided setup + installer | **Specified, not yet here** | — |
 | The self-improvement loop | **Specified, not yet here** | — |
 
-The full plan, component by component, lives in the build docs:
+The full plan, component by component, lives in the public docs:
 
-- **[`GENERALIZED-REPO-MANIFEST.md`](GENERALIZED-REPO-MANIFEST.md)** — the
-  canonical list of every component and rule, and where each one is going.
-- **[`PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md`](PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md)**
-  — the product map and the percent-built state of each piece.
-- **[`SOTA-GENESIS-ENGINE-SPEC.md`](SOTA-GENESIS-ENGINE-SPEC.md)** — how the
-  genesis engine is designed.
+- **[`docs/SYSTEM.md`](docs/SYSTEM.md)** — the component map: every feature, agent,
+  skill, and tool, and the percent-built state of each piece.
+- **[`docs/SETUP.md`](docs/SETUP.md)** — how to stand the system up, the genesis
+  engine flow, and how to run it today.
 - **[`CLAUDE.md`](CLAUDE.md)** — how work happens in this repo: the doctrine, the
   coding rules, and the hard limits. Read it before contributing.
 
@@ -244,8 +242,7 @@ wrong move.
 
 ## Where this is headed
 
-The build order (full detail in
-[`GENERALIZED-REPO-MANIFEST.md`](GENERALIZED-REPO-MANIFEST.md)): finish the
+The build order (full detail in [`docs/SYSTEM.md`](docs/SYSTEM.md)): finish the
 genesis engine's front half (the data connectors and the clean-up spine), port
 the five steering commands and the self-improvement loop, wire the guided
 setup and installer, and ship the data-boundary gate ahead of any real data.

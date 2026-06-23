@@ -18,13 +18,11 @@ test that passes — not "looks right."
 
 1. **[`CLAUDE.md`](CLAUDE.md)** — the doctrine, the coding rules (Musk's
    algorithm, then Karpathy's rules), and the four hard limits. Non-negotiable.
-2. **[`GENERALIZED-REPO-MANIFEST.md`](GENERALIZED-REPO-MANIFEST.md)** — the
-   canonical list of every component and rule, and where each is going.
-3. **[`PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md`](PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md)**
-   — the product map and the percent-built state of each piece (where the open
-   work is).
-4. The relevant **`BUILD-SPEC-*.md`** for the part you're touching — these are
-   detailed enough that the build is close to mechanical.
+2. **[`docs/SYSTEM.md`](docs/SYSTEM.md)** — the component map: every feature,
+   agent, skill, and tool, and the percent-built state of each piece (where the
+   open work is).
+3. **[`docs/SETUP.md`](docs/SETUP.md)** — how to stand the system up and the
+   genesis engine flow, for the part you're touching.
 
 ## Development setup
 

@@ -85,34 +85,45 @@ def _claim_from_event(event: Event, category: str) -> Claim:
         fact_key = m.group("key").strip().lower()
         fact_value = m.group("value").strip()
 
+    asserted_by_raw = event.meta.get("asserted_by")
     item = {
         "source_lane": event.kind,
-        "asserted_by": event.meta.get("asserted_by"),
+        "asserted_by": asserted_by_raw,
         "owner": event.meta.get("owner"),
         "provenance_tier": event.meta.get("provenance_tier"),
     }
     tier = tier_from_item(item)
 
+    # asserted_by is PLURAL (list of slugs) in the contract; an event carries at
+    # most one asserter in meta -> a 0- or 1-element tuple.
+    asserted_by = (asserted_by_raw,) if asserted_by_raw else ()
+
+    # last_evidence_change_at: the event's own time is when this evidence last
+    # moved (a fresh single-event projection has no earlier evidence-change).
     return Claim(
         claim_id=event.event_id,
-        category=category,
-        summary=text or event.event_id,
+        # PLURAL list of {path, anchor} per the doctrine contract. The corpus
+        # anchor's source_id+locator map to the contract's path+anchor; kind is
+        # carried for context.
+        source_anchors=(
+            {
+                "path": event.source_id,
+                "anchor": event.locator,
+                "kind": event.kind,
+            },
+        ),
+        asserted_by=asserted_by,
         observed_at=event.observed_at,
-        source_lane=event.kind,
-        source_anchor={
-            "source_id": event.source_id,
-            "kind": event.kind,
-            "locator": event.locator,
-        },
+        last_evidence_change_at=event.observed_at,
         confidence="medium",
-        recency="current",
-        conflict_status="none",
+        recency_status="current",
+        conflict_status="aligned",
+        summary=text or event.event_id,
         participants=event.participants,
         owner=event.meta.get("owner"),
         fact_key=fact_key,
         fact_value=fact_value,
         provenance_tier=tier,
-        asserted_by=event.meta.get("asserted_by"),
     )
 
 
@@ -129,25 +140,192 @@ def _summarize_pillar(name: str, claims: list[Claim]) -> str:
     return f"{name.title()} pillar: " + ", ".join(bits) + "."
 
 
-def _write_pillar_draft(pillar: PillarState) -> str:
-    """Write a Type-1 (FOR-AI) pillar draft under OUT_DIR. Returns the path.
+# Markers that bound the generated block. EVERYTHING above the start marker is
+# hand-authored prose the writer preserves verbatim (synthesis-writer rule 1).
+_GEN_START = "<!-- genesis:generated:start -->"
+_GEN_END = "<!-- genesis:generated:end -->"
+_MAX_DRAFT_LINES = 200          # synthesis-writer rule 4 (bounded write)
+_MAX_ARCHIVE_LINES = 40         # keep the rolling archive bounded under the cap
 
-    This is the ONLY file write the pipeline performs, and it is confined to
-    OUT_DIR (asserted by ``_assert_under_out``)."""
+
+def _anchor_ref(c: Claim) -> str | None:
+    """A short, resolvable source ref from the claim's PLURAL source_anchors,
+    or ``None`` if the claim carries no anchor (synthesis-writer rule 2: no
+    ground, no write -> the caller drops it from asserted facts)."""
+    if not c.source_anchors:
+        return None
+    first = c.source_anchors[0]
+    path = first.get("path") or first.get("source_id") or "?"
+    anchor = first.get("anchor") or first.get("locator") or ""
+    return f"{path}#{anchor}" if anchor else path
+
+
+def _fact_line(c: Claim) -> str:
+    """One rendered 'Current claims' bullet for a fact-bearing or context claim."""
+    fk = c.fact_key or "(context)"
+    fv = c.fact_value if c.fact_value is not None else "-"
+    return (
+        f"- [{c.provenance_tier}/{c.conflict_status}] {fk} = {fv} "
+        f"— {c.summary} (src {_anchor_ref(c) or '?'})"
+    )
+
+
+def _parse_prior_fact_values(text: str) -> dict[str, str]:
+    """Pull ``{fact_key: fact_value}`` from a prior draft's generated block, so a
+    re-run can detect which tracked facts CHANGED value (and must supersede,
+    not duplicate). Only the live 'Current claims' bullets are read."""
+    block = text.partition(_GEN_START)[2].partition(_GEN_END)[0]
+    if not block:
+        return {}
+    prior: dict[str, str] = {}
+    in_current = False
+    for raw in block.splitlines():
+        line = raw.strip()
+        if line.startswith("## Current claims"):
+            in_current = True
+            continue
+        if line.startswith("## "):
+            in_current = False
+            continue
+        if not (in_current and line.startswith("- [")):
+            continue
+        # "- [tier/status] key = value — summary (src ...)"
+        after = line.partition("]")[2].lstrip()
+        key, sep, rest = after.partition(" = ")
+        if not sep or key == "(context)":
+            continue
+        value = rest.partition(" — ")[0].strip()
+        prior[key.strip()] = value
+    return prior
+
+
+def _prior_archive_lines(text: str) -> list[str]:
+    """Existing '## Archived claims' bullets from a prior draft (archive-don't-
+    delete: they roll forward, never get dropped, only compacted under the cap)."""
+    block = text.partition(_GEN_START)[2].partition(_GEN_END)[0]
+    if not block:
+        return []
+    out: list[str] = []
+    in_arch = False
+    for raw in block.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if stripped.startswith("## Archived claims"):
+            in_arch = True
+            continue
+        if stripped.startswith("## "):
+            in_arch = False
+            continue
+        # Skip the empty-state placeholder so it never accumulates.
+        if in_arch and stripped.startswith("- ") and stripped != "- (none)":
+            out.append(line)
+    return out
+
+
+def _write_pillar_draft(pillar: PillarState, *, today: str = "") -> str:
+    """Surgically write/refresh a Type-1 (FOR-AI) pillar draft under OUT_DIR.
+
+    Per ``synthesis-writer/SKILL.md`` semantics (the brain's bounded,
+    supersede-don't-duplicate, archive-don't-delete writer), this is NOT a flat
+    dump:
+      * Hand-authored prose ABOVE the generated marker is preserved verbatim
+        (rule 1 — surgical, preserve what you aren't changing).
+      * 'Current claims' carries ONE current value per tracked fact; a claim
+        with no resolvable anchor is dropped from asserted facts (rule 2 — no
+        ground, no write).
+      * When a tracked fact's value CHANGED vs the prior draft, the old value is
+        moved into '## Archived claims' and a dated '## Evolution' line is added;
+        the live section never shows both old and new (rule 3 — supersede,
+        don't duplicate; archive, don't delete).
+      * The whole draft is capped at ~200 lines; the oldest archived bullets
+        compact into a rolling elision (rule 4 — bounded write).
+
+    This remains the ONLY file write the pipeline performs, confined to OUT_DIR
+    (asserted by ``_assert_under_out``)."""
     os.makedirs(OUT_DIR, exist_ok=True)
     path = os.path.join(OUT_DIR, f"pillar_{pillar.name}.md")
     _assert_under_out(path)
-    lines = [f"# Pillar: {pillar.name}", "", f"_status: proposed_", "",
-             pillar.summary, "", "## Resolved claims", ""]
+
+    prior_text = ""
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as fh:
+            prior_text = fh.read()
+
+    # Preserve any hand-authored header above the generated marker. A first-ever
+    # write (or a legacy flat draft with no marker) gets the default header.
+    if _GEN_START in prior_text:
+        header = prior_text.partition(_GEN_START)[0].rstrip("\n")
+    else:
+        header = f"# Pillar: {pillar.name}\n\n_status: proposed_"
+
+    prior_values = _parse_prior_fact_values(prior_text)
+    archive_lines = _prior_archive_lines(prior_text)
+
+    # Live 'Current claims' — anchored claims only (rule 2). Detect value shifts
+    # vs the prior draft and supersede (rule 3).
+    current_lines: list[str] = []
+    evolution_new: list[str] = []
+    seen_keys: set[str] = set()
     for c in pillar.claims:
-        fk = c.fact_key or "(context)"
-        fv = c.fact_value if c.fact_value is not None else "-"
-        lines.append(
-            f"- [{c.provenance_tier}/{c.conflict_status}] {fk} = {fv} "
-            f"— {c.summary} (src {c.source_anchor.get('source_id', '?')})"
+        if _anchor_ref(c) is None:
+            continue  # no ground, no write
+        current_lines.append(_fact_line(c))
+        if c.fact_key:
+            seen_keys.add(c.fact_key)
+            old = prior_values.get(c.fact_key)
+            new = c.fact_value if c.fact_value is not None else "-"
+            if old is not None and old != new:
+                # Supersede: archive the old value, never leave both standing.
+                archive_lines.append(
+                    f"- {c.fact_key} = {old} (superseded by {new}"
+                    + (f" on {today}" if today else "")
+                    + f"; src {_anchor_ref(c)})"
+                )
+                evolution_new.append(
+                    f"- {today + ' — ' if today else ''}{c.fact_key}: "
+                    f"{old} -> {new} (src {_anchor_ref(c)})"
+                )
+
+    # Compact the rolling archive under the cap (rule 4) — keep newest, elide
+    # the oldest into one summary line so nothing is silently deleted.
+    if len(archive_lines) > _MAX_ARCHIVE_LINES:
+        elided = len(archive_lines) - _MAX_ARCHIVE_LINES
+        archive_lines = (
+            [f"- (+{elided} older archived claim(s) elided to stay under the line cap)"]
+            + archive_lines[-_MAX_ARCHIVE_LINES:]
         )
+
+    gen: list[str] = [
+        _GEN_START,
+        "",
+        "## Current state summary",
+        "",
+        pillar.summary,
+        "",
+        "## Current claims",
+        "",
+    ]
+    gen += current_lines or ["- (no anchored claims yet)"]
+    gen += ["", "## Evolution", ""]
+    gen += evolution_new or ["- (no superseded facts this pass)"]
+    gen += ["", "## Archived claims", ""]
+    gen += archive_lines or ["- (none)"]
+    gen += ["", _GEN_END]
+
+    body = header + "\n\n" + "\n".join(gen) + "\n"
+
+    # Hard cap (rule 4): if still over, trim from the archive tail (already the
+    # oldest-elided form) rather than dropping live current claims.
+    out_lines = body.splitlines()
+    if len(out_lines) > _MAX_DRAFT_LINES:
+        # Drop archive bullets from the end until under the cap, leaving the
+        # elision summary in place.
+        while len(out_lines) > _MAX_DRAFT_LINES and out_lines and out_lines[-2].startswith("- "):
+            del out_lines[-2]
+        body = "\n".join(out_lines) + "\n"
+
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines) + "\n")
+        fh.write(body)
     return path
 
 
@@ -168,6 +346,7 @@ def run_genesis(
     egress: EgressGate,
     pillar_keywords: dict[str, tuple[str, ...]] | None = None,
     write_drafts: bool = True,
+    today: str = "",
 ) -> ReviewPacket:
     """Run the full genesis pass and return an operator ``ReviewPacket``.
 
@@ -180,6 +359,9 @@ def run_genesis(
         pillar_keywords: optional custom pillar routing map.
         write_drafts: write pillar drafts to OUT_DIR (off in tests that assert
             no writes).
+        today: optional ISO date stamped onto supersession Evolution/Archive
+            lines when a draft refresh changes a tracked fact. Empty (default)
+            keeps draft writes deterministic for tests.
 
     Returns:
         A ``ReviewPacket`` whose every proposal is ``status="proposed"`` with
@@ -207,7 +389,7 @@ def run_genesis(
             anchors=pillar_anchors.get(name, []),
         )
         if write_drafts:
-            state.draft_path = _write_pillar_draft(state)
+            state.draft_path = _write_pillar_draft(state, today=today)
         pillars[name] = state
 
     # 3. Derive meta-initiatives (anchor-or-drop) + propose roster (MIN_EVIDENCE).
@@ -222,6 +404,16 @@ def run_genesis(
     doc_reorg_proposals: list[Proposal] = []
 
     # 5. Assemble the operator review packet (Type-2; applies nothing).
+    #
+    # The pipeline STOPS here, at the operator gate — it never stands an agent
+    # up. When the operator RATIFIES an 'agent' roster proposal in the
+    # review/ratify path, that path calls
+    # ``agent_wiki_builder.build_wiki_for_ratified_proposal(proposal, corpus,
+    # llm, egress)`` to build the agent's DRAFT cited wiki (index + one cited
+    # source page per source doc + a concept page + log, under
+    # ``genesis/out/wiki/<agent>/``). That seam refuses any non-ratified
+    # proposal by default, so proposals-only discipline holds: nothing here
+    # auto-builds a wiki.
     packet = build_review_packet(
         pillars, mi_proposals, roster_proposals, doc_reorg_proposals
     )

@@ -2,13 +2,9 @@
 
 *The component map for someone who cloned this repo and wants to understand the
 machine before running it. Type-2 (FOR-THE-OPERATOR): plain English, opens "in
-plain terms." The **what-to-build** authority is
-[GENERALIZED-REPO-MANIFEST.md](GENERALIZED-REPO-MANIFEST.md);
-the **product flow** is
-[PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md](PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md);
-the **genesis engine** is
-[SOTA-GENESIS-ENGINE-SPEC.md](SOTA-GENESIS-ENGINE-SPEC.md).
-This doc explains the pieces; those docs justify and sequence them.*
+plain terms." This doc, together with [SETUP.md](SETUP.md), is the public
+component-and-setup reference. (Deeper build specs and the audit trail are kept
+in the maintainer's internal planning docs, not published with the repo.)*
 
 ---
 
@@ -41,22 +37,20 @@ This doc breaks the machine into its four kinds of parts:
 
 **One honest caveat up front.** This repo is mid-build. The **genesis engine's
 core is real code that exists here and passes its tests today** (the resolver +
-the intelligence layer, 42 tests green — see [§ Build state](#build-state)).
+the intelligence layer, 74 tests green — see [§ Build state](#build-state)).
 Most of the **skills, the agents, and the ingest connectors are specified here
 but their code still lives inside the private brain they were extracted from** —
 they are described below as designed, with their build-state marked. When this
 doc says a piece "exists," it means in *this* repo; when it says "specified," it
 means the design is settled but the code hasn't been ported/de-welded yet. The
-definitive blocker list is
-[SHIP-GATING-REVIEW.md](SHIP-GATING-REVIEW.md).
+definitive blocker list is kept in the maintainer's internal ship-gating review.
 
 ---
 
 ## 1. Features — what the system does
 
 The product is one flow, top to bottom. Each stage is a feature; each is owned
-by skills/tools described later. (Full diagram in
-[PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md](PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md).)
+by skills/tools described later.
 
 | # | Feature | What it is | Why it exists | How it's wired |
 |---|---|---|---|---|
@@ -215,14 +209,12 @@ CONNECT → BULK INGEST → CLAIMS → RESOLVE (tier > recency > archive-loser)
 
 The genesis story is **"resurrect, don't rebuild"**: a real ~7,400-line bulk
 populator (the recovered upstream populator) already read a company into pillars and was
-*archived intact*, not destroyed (history recovery in
-[GENESIS-ENGINE-RECOVERY.md](GENESIS-ENGINE-RECOVERY.md)).
+*archived intact*, not destroyed.
 So genesis is **~70–80% recoverable**, not built from scratch. The job is to weld
 that populator to the newer skills it never had. The two pieces **built in this
 repo today** are:
 
-- **The claim resolver** (`genesis/genesis_resolver.py`, from
-  [BUILD-SPEC-01](BUILD-SPEC-01-genesis-resolver.md)).
+- **The claim resolver** (`genesis/genesis_resolver.py`).
   The old populator, when two facts disagreed, dumped **both** and never picked.
   The resolver decides which is **current**: **your own word beats a primary
   source beats a third-party guess** (`operator > primary > secondary`); newer
@@ -231,8 +223,7 @@ repo today** are:
   deterministic, fully tested.
 - **The intelligence layer** (`genesis/genesis_pipeline.py`,
   `meta_initiative_deriver.py`, `roster_proposer.py`, `review_surface.py`,
-  `genesis_contracts.py`, from
-  [BUILD-SPEC-02](BUILD-SPEC-02-genesis-intelligence.md)).
+  `genesis_contracts.py`).
   After the pillars are populated, this **derives meta-initiatives** (1–3 per
   pillar) and **proposes the roster** — the intelligence the old engine never
   had — and assembles the **review packet**. Three rails are **code, not
@@ -241,7 +232,7 @@ repo today** are:
   `status="proposed"`), (c) **nothing private leaves to a foreign model** (the
   `EgressGate`, §4).
 
-*(Both are real and green — 42 tests pass. Build-state in
+*(Both are real and green — 74 tests pass. Build-state in
 [§ Build state](#build-state).)*
 
 ### 3e. Skills shipped *later* (out of v1)
@@ -332,14 +323,12 @@ branches through git; the `claude/**` auto-merge template gathers routine
 branches. **One sharp edge, stated plainly:** a "don't push" gate **cannot hold
 on a shared `main`** — so the discipline is a **separate branch**, or you state
 openly that the gate is unenforceable. *(This is doctrine in
-[CLAUDE.md](CLAUDE.md) §3 and a hard
+[CLAUDE.md](../CLAUDE.md) §3 and a hard
 limit in §4.)*
 
-> **What this repo is NOT yet, on git:** it is **not a git repository** today —
-> `git init` (plus a `.gitignore` so no token/`.pyc`/`chat.db` ever enters
-> history) is an open blocker (B1/B6 in
-> [SHIP-GATING-REVIEW.md](SHIP-GATING-REVIEW.md)),
-> deliberately left for the operator to own. Don't assume versioning exists.
+> **On git:** this repo is now version-controlled, with a `.gitignore` that keeps
+> tokens, `.pyc`, and `chat.db` out of history. Publishing it to a remote and the
+> first push remain the operator's call.
 
 ---
 
@@ -350,16 +339,16 @@ so you know what you can run today.
 
 | Component | In this repo? | State |
 |---|---|---|
-| **Genesis claim resolver** (`genesis/genesis_resolver.py`) | ✅ Yes | Real, pure, deterministic. Tested (BUILD-SPEC-01 cases). |
+| **Genesis claim resolver** (`genesis/genesis_resolver.py`) | ✅ Yes | Real, pure, deterministic. Tested. |
 | **Genesis intelligence layer** (`genesis_pipeline` · `meta_initiative_deriver` · `roster_proposer` · `review_surface` · `genesis_contracts`) | ✅ Yes | Real. MI-deriver, roster-proposer (≥3-evidence floor), review surface (Type-2), **EgressGate** rail — all built. |
-| **Genesis test suite** (`test_genesis_resolver.py` · `test_genesis_intelligence.py`) | ✅ Yes | **42 tests pass** (`/usr/bin/python3 -m pytest -q` in `genesis/` → `42 passed`). Verifies the rails: anchor-or-drop, proposals-only, never-re-propose-base-roster, MIN_EVIDENCE, egress-blocks-private, Type-2 packet, full-corpus mode. |
-| **The full ~7,400-line populator** (recovered upstream populator) | ❌ No | Recoverable from the source company's history (archived intact). The resurrect target. See GENESIS-ENGINE-RECOVERY.md. |
+| **Genesis test suite** (`test_genesis_resolver.py` · `test_genesis_intelligence.py` · `test_genesis_contract_conformance.py` · `test_genesis_pillar_writer.py` · `test_agent_wiki_builder.py`) | ✅ Yes | **74 tests pass** (`/usr/bin/python3 -m pytest -q` in `genesis/` → `74 passed`). Verifies the rails: anchor-or-drop, proposals-only, never-re-propose-base-roster, MIN_EVIDENCE, egress-blocks-private, Type-2 packet, full-corpus mode. |
+| **The full ~7,400-line populator** (recovered upstream populator) | ❌ No | Recoverable from the source company's history (archived intact). The resurrect target. |
 | **Ingest spine** (sanitize · normalize · dedup · privacy-gate) | ❌ No | Specified; ~75% reusable; still in the private brain. |
 | **Connectors** (cloud / local / code / Slack) | ❌ No | Specified; the least-portable layer (account/path/host-bound; Slack 0%). |
 | **The 5 steering skills** (ramble/vision/manifest/morning/pulse) | ❌ No | Specified; exist with strong logic in the private brain, welded to that company. |
 | **`/close` · `atomic-decompose` · auto-merge template** | ❌ No | Specified (the NEW components); de-weld plan written. |
 | **Self-improvement loop** (fold · skill-deltas · task-proposals) | ❌ No | Specified; ~35% built in the private brain; not ported. |
-| **Packaging** (path-resolver · skill namespace · installer · LICENSE · README · root CLAUDE.md) | ⚠️ Partial | `CLAUDE.md` exists (the doctrine kernel). Not yet a git repo; no LICENSE/README/installer. Blockers B1–B12 in SHIP-GATING-REVIEW.md. |
+| **Packaging** (path-resolver · skill namespace · installer · LICENSE · README · root CLAUDE.md) | ⚠️ Partial | Git repo, `LICENSE`, `README.md`, `install.py`, and root `CLAUDE.md` all exist. The skill namespace and remaining onboarding polish are the open packaging work. |
 
 **One-line truth:** the **engine that births a brain has its core beating in
 this repo and green**; the **machine that feeds it (connectors, spine) and the
@@ -372,17 +361,11 @@ de-welding excellent existing parts, not inventing them.**
 
 ## Where to go next
 
-- **To run the genesis core today:** `cd genesis && /usr/bin/python3 -m pytest -q`
-  (this machine's Homebrew Python has a broken `pyexpat`; use the system
-  interpreter), then `python genesis_pipeline.py` for the canned end-to-end demo
-  and `python genesis_resolver.py` for the resolver demo. (See
-  [genesis/README.md](genesis/README.md).)
-- **To understand the *why* + sequencing:**
-  [GENERALIZED-REPO-MANIFEST.md](GENERALIZED-REPO-MANIFEST.md)
-  (components + doctrine + build order).
-- **To understand the *product flow*:**
-  [PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md](PRODUCT-ARCHITECTURE-AND-BUILD-STATE.md).
-- **To see what blocks shipping:**
-  [SHIP-GATING-REVIEW.md](SHIP-GATING-REVIEW.md).
+- **To run the genesis core today:** `cd genesis && python3 -m pytest -q`
+  (if your `python3` has a broken `pyexpat`, use the system interpreter at
+  `/usr/bin/python3`), then `python3 genesis_pipeline.py` for the canned
+  end-to-end demo and `python3 genesis_resolver.py` for the resolver demo. (See
+  [genesis/README.md](../genesis/README.md).)
+- **To stand the system up + the genesis flow:** [SETUP.md](SETUP.md).
 - **The rules every clone inherits (how to think/build/talk here):**
-  [CLAUDE.md](CLAUDE.md).
+  [CLAUDE.md](../CLAUDE.md).
