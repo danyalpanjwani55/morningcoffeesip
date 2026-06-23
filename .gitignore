@@ -1,0 +1,59 @@
+# MorningCoffeeSip — .gitignore
+#
+# This file MUST exist before the first commit (see SHIP-GATING-REVIEW.md B6):
+# it keeps compiled artifacts AND — critically — any future connector
+# tokens/credentials out of git history. A secret committed to a public remote
+# is an irreversible leak, so the patterns below fail toward caution.
+
+# --- Python build / cache artifacts ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Secrets / credentials (NEVER commit — these are the irreversible leaks) ---
+.env
+.env.*
+!.env.example
+*token*.json
+*credential*.json
+credentials*.json
+client_secret*.json
+service_account*.json
+*.pem
+*.key
+secrets/
+.secrets/
+
+# --- Local data the connectors copy in (private corpora; never commit) ---
+*.sqlite
+*.sqlite3
+chat.db
+*.mbox
+
+# --- Genesis / brain runtime output (regenerated; not source) ---
+genesis/out/
+brain/
+!brain/.keep
+
+# --- Local config the installer writes (machine-specific) ---
+.config/
+config.local.json
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# internal planning/audit/spec docs — never published
+_internal/
