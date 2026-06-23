@@ -260,7 +260,7 @@ def test_private_body_is_dropped_by_egress(tmp_path: Path):
         sessions=[(1, _ALICE_JID, "Alice", 0)],
         messages=[
             {"z_pk": 10, "session": 1, "date": _apple_seconds("2026-06-20T10:00:00Z"),
-             "is_from_me": 0, "text": "here's the key: sk-ABCDEFGHIJKLMNOarP123456",
+             "is_from_me": 0, "text": "here's the key: sk-ABCDEFGHIJKLMNOarP123456",  # pragma: allowlist secret
              "from_jid": _ALICE_JID, "to_jid": None, "group_member": None},
             {"z_pk": 11, "session": 1, "date": _apple_seconds("2026-06-20T10:01:00Z"),
              "is_from_me": 0, "text": "and a normal harmless message",

@@ -97,8 +97,8 @@ your-company-export/
 | **Notes / docs** | Anything already in Markdown or plain text goes straight into `notes/`. Export Google Docs / Notion / Word as Markdown or `.txt` first. |
 | **iMessage / WhatsApp** | **Read locally — see [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md).** Not via this folder: a local Mac agent (`python -m ingest.local.sync`) reads them on your machine, allowlisted + sanitized. Needs a one-time macOS Full Disk Access grant. |
 | **Chat (Slack, etc.)** | **Not read yet.** If you have a Slack export, the per-message text won't be ingested until the chat adapter is built. For now, paste the important threads into a `.md` note. |
-| **Calendar** | **Not read yet by this folder.** Designed for the cloud routine (see [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md)); for now, paste a meeting's notes/agenda into a `.md` note if it matters. |
-| **Files (Drive, etc.)** | **Not read yet** as a live connector. Export the documents that matter to Markdown/`.txt` and put them in `notes/`. |
+| **Calendar** | **Not read by this folder** — it's the **cloud routine's** job. Stand the routine up (turnkey recipe + paste-in prompt: [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md); adapt the [`examples/cloud-routine/`](../examples/cloud-routine/) templates) and it reads your calendar read-only. For a one-off, paste a meeting's notes/agenda into a `.md` note. |
+| **Files (Drive, etc.)** | **Not read by this folder** — also the **cloud routine's** job ([CLOUD-ROUTINE.md](CLOUD-ROUTINE.md)). For a one-off, export the documents that matter to Markdown/`.txt` and put them in `notes/`. |
 | **Code host (GitHub, etc.)** | **Not read yet** as a live connector. |
 
 This is the manual stand-in for the auto-pull connectors that are the next build. The point of
@@ -211,12 +211,12 @@ So you're not surprised hunting for a connector that isn't there:
 
 | Source | Auto-pull connector | What you do today |
 |---|---|---|
-| **Email** (`.eml`) | Not built (cloud routine designed — see [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md)) | Export to `.eml`, drop in `mail/` — **reads today.** |
+| **Email** (`.eml`) | **Stand up from a recipe** — the scheduled **cloud routine** ([CLOUD-ROUTINE.md](CLOUD-ROUTINE.md) + [`examples/cloud-routine/`](../examples/cloud-routine/) templates); the email *adapter* it reuses is built + tested | Export to `.eml`, drop in `mail/` — **reads today**; or stand up the routine for hands-off email. |
 | **Notes / docs** (`.md`/`.txt`) | n/a (just files) | Drop in `notes/` — **reads today.** |
 | **iMessage / WhatsApp** | **Built — the local Mac agent** (`ingest/local/`, `python -m ingest.local.sync`) | Grant Full Disk Access + a correspondents list; runs locally. See [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md). |
 | **Chat** (Slack) | Not built (Slack was retired upstream; needs a full rebuild) | Paste key threads into a `.md` note. |
-| **Calendar** | Not built (cloud routine designed) | Paste meeting notes into a `.md` note. |
-| **Files** (Drive) | Not built (cloud routine designed) | Export the docs that matter to `.md`/`.txt`. |
+| **Calendar** | **Stand up from a recipe** — the cloud routine ([CLOUD-ROUTINE.md](CLOUD-ROUTINE.md) + [`examples/cloud-routine/`](../examples/cloud-routine/)) | Stand up the routine, or paste meeting notes into a `.md` note. |
+| **Files** (Drive) | **Stand up from a recipe** — the cloud routine ([CLOUD-ROUTINE.md](CLOUD-ROUTINE.md) + [`examples/cloud-routine/`](../examples/cloud-routine/)) | Stand up the routine, or export the docs that matter to `.md`/`.txt`. |
 | **Code host** (GitHub) | Not built | — (feeds the R&D pillar once built). |
 
 The reusable **clean-up spine** the connectors will feed — sanitize → normalize → dedup — is
@@ -244,6 +244,9 @@ records to the spine," not "reinvent the pipeline."
 
 ## Where to go next
 
+- **Get your phone messages in (the local↔cloud split):** [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md).
+- **Stand up the hands-off cloud half (email/Drive/calendar) — turnkey recipe + paste-in prompt:**
+  [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md), with the adaptable [`examples/cloud-routine/`](../examples/cloud-routine/) templates.
 - **Stand the whole system up + the operator decisions:** [SETUP.md](SETUP.md).
 - **What the machine is made of (every feature/agent/skill/tool + build state):**
   [SYSTEM.md](SYSTEM.md).

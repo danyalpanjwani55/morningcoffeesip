@@ -17,7 +17,7 @@ time.
 > ingest (clean + de-secret) → genesis (resolve facts, draft pillars, propose
 > your vision and agent roster) → a plain-English review packet → your ratify
 > gate → a cited wiki for each agent you approve. It runs on a bundled sample
-> with **no setup, no accounts, and no data of your own** (302 passing tests;
+> with **no setup, no accounts, and no data of your own** (337 passing tests;
 > see [Quickstart](#quickstart)), or on **your own folder of notes/mail** via
 > `--sources` (see [Connecting your own data](#connecting-your-own-data)).
 >
@@ -33,8 +33,13 @@ time.
 > **iMessage + WhatsApp** are read on your Mac by a runnable local agent
 > (allowlisted, sanitized, proposals-only —
 > [`docs/INGEST-ARCHITECTURE.md`](docs/INGEST-ARCHITECTURE.md)), and the
-> **email / Drive / calendar** half runs as a scheduled cloud routine you stand
-> up from a recipe ([`docs/CLOUD-ROUTINE.md`](docs/CLOUD-ROUTINE.md)).
+> **email / Drive / calendar** half is split in two: the **processing** code
+> (sent-correspondent filter → shared spine → genesis → proposals) ships and is
+> tested here ([`ingest/cloud/`](ingest/cloud/), runnable as
+> `python -m ingest.cloud.refresh`); only the **auth + pull** stays a scheduled
+> cloud routine you stand up from a recipe
+> ([`docs/CLOUD-ROUTINE.md`](docs/CLOUD-ROUTINE.md)), because that part is welded
+> to whichever assistant platform you use.
 
 ---
 
@@ -186,7 +191,8 @@ Be precise about this so you're not surprised after you clone.
 | **The five steering commands** (ramble/vision/manifest/morning/pulse) + `close` + `atomic-decompose` | **Ported (skill specs), de-welded** | [`skills/`](skills/) |
 | **The self-improvement loop** (fold · ratchet · skill-deltas) | **Runs, tested** | [`loop/`](loop/) |
 | **The local message lanes** (iMessage + WhatsApp → allowlisted, sanitized, proposals-only — the local Mac sync agent) | **Runs, tested** (needs a one-time macOS Full Disk Access grant) | [`ingest/local/`](ingest/local/) · [`docs/INGEST-ARCHITECTURE.md`](docs/INGEST-ARCHITECTURE.md) |
-| The **cloud routine** for email / Drive / calendar (the scheduled read-only half) | **Specified, not shipped code** — stand it up from the recipe | [`docs/CLOUD-ROUTINE.md`](docs/CLOUD-ROUTINE.md) |
+| The **cloud routine** for email / Drive / calendar — **processing** half (Gmail sent-filter → shared spine → genesis → proposals) | **Runs, tested** (`python -m ingest.cloud.refresh` on a connector dump) | [`ingest/cloud/`](ingest/cloud/) |
+| The **cloud routine** — **auth + pull** half (the scheduled read-only connector access) | **Specified, not shipped code** — stand it up from the recipe (welded to your assistant platform) | [`docs/CLOUD-ROUTINE.md`](docs/CLOUD-ROUTINE.md) |
 | The source **auto-pull connectors** (one-click Gmail / Slack / Drive / code host) | **Not yet — point `--sources` at an exported folder instead** | — |
 | A real model wired behind the privacy gate (today a built-in offline model reasons) | **Not yet — inject your own via the `LLM` protocol** | — |
 | A click-to-ratify review **UI** | **Not yet — ratify is a terminal prompt today** | — |
@@ -230,7 +236,7 @@ cd morningcoffeesip
 python3 run.py --auto-ratify        # non-interactive: approves every proposal
 #  python3 run.py                    # interactive: it asks you per proposal
 
-# 3. (Optional) Run the test suite — proves every rule holds (302 passing).
+# 3. (Optional) Run the test suite — proves every rule holds (337 passing).
 python3 -m pytest -q
 ```
 

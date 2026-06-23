@@ -1,0 +1,62 @@
+{
+  "_README": [
+    "SAMPLE routine config for the MorningCoffeeSip cloud ingest routine — a TEMPLATE you adapt, not live config.",
+    "It is a plain-English description of the scheduled cloud agent you stand up (see ../../docs/CLOUD-ROUTINE.md).",
+    "Your assistant platform's actual routine UI / API will not consume this file verbatim — different platforms",
+    "describe a routine differently. This file is the portable, provider-neutral CHECKLIST of every choice a routine",
+    "needs, so you can transcribe it into whatever form your platform uses and not forget a field (especially the",
+    "read-only connector scope and the deny-list). Copy it, fill in the TODOs, keep every rail.",
+    "Nothing here is secret: there are NO tokens, NO account ids, NO credentials — those live in your assistant",
+    "account, never in this repo. If you ever find yourself pasting a key in here, stop: that is the irreversible leak."
+  ],
+
+  "name": "morningcoffeesip-cloud-ingest",
+  "description": "Scheduled, READ-ONLY ingest routine: reads what is new in email/Drive/calendar, harvests the sent-correspondents list the local message lanes depend on, writes derived sanitized notes (proposals-only) to a review branch. Idle = no-op.",
+
+  "schedule": {
+    "_comment": "Hourly is a sane default (fresher brain, more runs). Daily is also fine. Cron is UTC unless your platform says otherwise.",
+    "cron": "0 * * * *",
+    "timezone": "UTC"
+  },
+
+  "repo": {
+    "_comment": "Point the routine at a FRESH CLONE of your MorningCoffeeSip repo. TODO: your fork.",
+    "url": "TODO: https://github.com/<your-org>/<your-morningcoffeesip-fork>",
+    "ref": "main",
+    "_brain_root_note": "If your brain root is not the repo's default (./brain), set MCS_BRAIN_ROOT in the routine's env so mcs_paths resolves it the same way the local agent does. See ../../mcs_paths.py and ../../docs/SETUP.md."
+  },
+
+  "connectors": {
+    "_comment": "Attach ONLY the connectors you want read, and attach them READ-ONLY. Email is the one that matters most — it produces the correspondents file. Any connector you omit is simply skipped (not an error).",
+    "email":    { "attach": true,  "mode": "read-only" },
+    "drive":    { "attach": true,  "mode": "read-only" },
+    "calendar": { "attach": true,  "mode": "read-only" }
+  },
+
+  "deny_tools": [
+    "_comment: HARD RAIL. Even with read-only connectors attached, a routine often INHERITS send/mutate tools. Explicitly DENY every one your platform exposes, so the routine cannot send, reply, create/modify a calendar event, move/delete a file, move money, or touch a credential. Fail-closed: if unsure whether a tool can mutate, deny it.",
+    "email.send", "email.reply", "email.draft.send",
+    "calendar.create", "calendar.update", "calendar.delete",
+    "drive.create", "drive.update", "drive.delete", "drive.move",
+    "any-payment-or-banking-tool",
+    "any-credential-or-secret-access-tool"
+  ],
+
+  "branch": {
+    "_comment": "Proposals-only. The routine writes to its OWN branch, never your main. You merge at the /morning gate. A routine on a shared branch CANNOT be technically prevented from pushing by a rule in a file (trust-git-not-self-report) — so the safe posture is a review branch + the automerge gate in github-action-automerge.sample.yml.",
+    "write_to_prefix": "claude/",
+    "never_push_to": "main"
+  },
+
+  "standing_prompt_source": {
+    "_comment": "The routine's job description = the paste-in prompt in ../../docs/CLOUD-ROUTINE.md (section: 'The paste-in prompt'). That prompt IS the de-welded cloud-refresh skill, inlined. Paste it as the routine's standing instructions; keep ALL of it (read-only · correspondents-from-sent · sanitize-then-derive · proposals-only · write sources/sent-correspondents.txt · idle=no-op).",
+    "doc": "../../docs/CLOUD-ROUTINE.md#the-paste-in-prompt-the-routines-standing-instructions"
+  },
+
+  "rails": [
+    "READ-ONLY on every connector — never send, reply, create/modify a calendar event, move/delete a file, move money, or touch a credential.",
+    "No raw secrets ever leave — commit only DERIVED notes; never a raw private body, password, token, or one-time code.",
+    "Proposals-only — write to a review branch; never apply to a live brain; never merge to main; never send anything.",
+    "Idle = inert — nothing new since the last run means nothing done (no commits, no output)."
+  ]
+}

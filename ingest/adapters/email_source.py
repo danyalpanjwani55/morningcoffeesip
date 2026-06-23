@@ -229,15 +229,17 @@ class EmailAdapter:
 
         The founder's own address is excluded (you don't correspond with
         yourself), so a self-cc'd sent mail doesn't whitelist your own inbox.
+
+        The harvest RULE itself lives in the module-level
+        :func:`harvest_sent_correspondents` so a non-mbox lane (the cloud Gmail
+        lane, which has dict records rather than ``Message`` objects) reuses the
+        exact same logic instead of forking it. This method just supplies the
+        per-message ``(To+Cc addresses)`` of each SENT message from this mbox.
         """
-        out: set[str] = set()
-        for is_sent, msg in messages:
-            if not is_sent:
-                continue
-            for addr in _addresses(msg, ("To", "Cc")):
-                if addr and addr != self.user_email:
-                    out.add(addr)
-        return out
+        sent_recipient_lists = (
+            _addresses(msg, ("To", "Cc")) for is_sent, msg in messages if is_sent
+        )
+        return harvest_sent_correspondents(sent_recipient_lists, user_email=self.user_email)
 
     def _record_from_message(self, msg: Message) -> dict[str, Any] | None:
         body = _plain_text_body(msg)
@@ -257,6 +259,34 @@ class EmailAdapter:
             "participants": participants,
             "meta": {"adapter": "email", "from": _addresses(msg, ("From",))[:1]},
         }
+
+
+def harvest_sent_correspondents(
+    sent_recipient_lists: Iterable[Iterable[str]], *, user_email: str = ""
+) -> set[str]:
+    """The canonical SENT-folder → correspondent rule, source-shape-agnostic.
+
+    Given the recipient (To + Cc) address lists of the founder's SENT messages
+    — one inner iterable per sent message — return the set of every address the
+    founder emailed, with the founder's own address excluded (you don't
+    correspond with yourself; a self-cc'd sent mail must not whitelist your own
+    inbox). Addresses are lowercased so the set matches case-insensitively.
+
+    This is the ONE place the rule lives. ``EmailAdapter._collect_correspondents``
+    (mbox/maildir/.eml) and the cloud Gmail lane (dict records) both call it, so
+    the spam-vs-correspondent boundary can never drift between the two sources.
+    The resulting set is the seed handed to
+    :func:`ingest.allowlist.build_allowlist` — the SAME allowlist that then gates
+    the iMessage / WhatsApp lanes.
+    """
+    me = (user_email or "").strip().lower()
+    out: set[str] = set()
+    for recipients in sent_recipient_lists:
+        for addr in recipients:
+            norm = (addr or "").strip().lower()
+            if norm and norm != me:
+                out.add(norm)
+    return out
 
 
 def _resolve_user_email(explicit: str | None) -> str:

@@ -17,8 +17,7 @@ everything else (email, shared files, calendar) by a program **in the cloud**. T
 the local half is real, runnable code. This page is the missing other half: **exactly what the
 cloud program does, the guardrails it runs under, and a recipe you can paste in to create it.**
 
-**The honest status, first.** The cloud half is **not pre-built runnable code in this repo** — it
-is a **scheduled agent you stand up**, pointed at a fresh copy of this repository, following the
+**The honest status, first.** The cloud half is **two parts**: the **processing** (Gmail sent-filter → the shared spine → genesis) **ships as tested code** (`ingest/cloud/`, `python -m ingest.cloud.refresh`); the **auth + pull** (reaching your accounts) is **a scheduled agent you stand up**, pointed at a fresh copy of this repository, following the
 recipe below. (A term, once: a **scheduled agent**, here called a **routine**, is an AI assistant
 set to run on a clock — e.g. once an hour — with read-only access to the accounts you attach to it.
 It is the cloud equivalent of a cron job, but for an assistant rather than a script.) Why a recipe
@@ -180,18 +179,71 @@ it's repeated here because the cloud routine is the thing that *performs* the re
 
 ---
 
-## How to set it up
+## How to set it up — the turnkey path
 
-1. **Create a scheduled routine on your assistant platform**, pointed at a fresh copy of this
-   repository, with **read-only** connectors attached for the sources you want (email, Drive,
-   calendar). Email is the one that matters most — it produces the correspondents file.
-2. **Give it the job description.** Paste the prompt below as the routine's standing instructions. It
-   encodes the steps and rails above so the routine operates inside the boundary.
-3. **Pick a schedule** (hourly is a good default).
-4. **Let it run once, then run the local agent.** After the first cloud run has written
+This is the concrete, do-it-now flow. It is written for **Claude routines** (the scheduled-agent
+feature in a Claude account), because that's the platform this system is modeled on — but the shape
+is the same on any assistant platform that offers connectors + a scheduled agent. **Two starter
+files** do most of the work for you, in [`../examples/cloud-routine/`](../examples/cloud-routine/):
+a sample routine config and a GitHub Action that lands the routine's output safely (more on that in
+[The schedule template](#the-schedule-template-the-two-starter-files-you-adapt) below).
+
+1. **Connect your accounts — read-only — in your Claude account.** In your account's
+   **connectors / integrations** settings, connect **Gmail, Google Drive, and Google Calendar**, and
+   grant each one **read** access only. (A *connector* is the pre-built bridge that lets the assistant
+   read one of your accounts; *read-only* means it can look but never send, change, or delete.) Email
+   is the one that matters most — it's what produces the correspondents file. Connect only the sources
+   you actually want read; any you skip are simply skipped, not an error.
+
+2. **Create a Claude routine pointed at your repo.** In **claude.ai/code → Routines**, create a new
+   routine and point it at a **fresh clone of your fork of this repository**. (A *routine* is an
+   assistant set to run on a clock against a repo — the cloud equivalent of a cron job, but for an
+   assistant.) Attach the read-only connectors from step 1 to this routine. Use
+   [`../examples/cloud-routine/routine.sample.json`](../examples/cloud-routine/routine.sample.json) as
+   your fill-in-the-blank checklist so you don't miss a field (the schedule, the read-only scope, and
+   the tool **deny-list** especially).
+
+3. **Give it the job description — paste in the standing prompt.** Paste the prompt
+   [below](#the-paste-in-prompt-the-routines-standing-instructions) as the routine's standing
+   instructions. **That prompt *is* the de-welded "cloud-refresh skill," inlined** — it tells the
+   routine to read what's new, harvest correspondents from your sent mail, sanitize, write derived
+   notes to a review branch, and do nothing when idle. Keep all of it.
+
+4. **Pick a schedule.** Hourly is a good default (fresher brain, more runs); daily is fine too. This
+   is the whole refresh mechanism — see [Keep it current](#keep-it-current--the-refresh-cadence-dont-set-and-forget).
+
+5. **Turn on the safe-landing Action (recommended).** Copy
+   [`../examples/cloud-routine/github-action-automerge.sample.yml`](../examples/cloud-routine/github-action-automerge.sample.yml)
+   into `.github/workflows/` **in your fork**. It lands each routine run's branch onto `main` *only*
+   on a clean, test-passing merge — the guardrail that makes the routine's proposals reach the brain
+   without you hand-merging every run, and the fix for the stranded-branches bug (see the template's
+   header). Without it, you merge the routine's review branches by hand at `/morning`.
+
+6. **Let it run once, then run the local agent.** After the first cloud run has written
    `sources/sent-correspondents.txt`, run `python -m ingest.local.sync --dry-run` on your Mac to see
-   the local lanes light up against the freshly-written list (dry-run writes nothing). See
-   [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md).
+   the local **iMessage/WhatsApp** lanes light up against the freshly-written list (dry-run writes
+   nothing). The cloud routine and the local Mac agent are the two complementary halves — cloud does
+   email/Drive/calendar without your computer being open; the Mac agent does your personal messages
+   locally. See [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md).
+
+### The schedule template — the two starter files you adapt
+
+You don't write the routine config or the landing workflow from scratch — adapt the two templates in
+[`../examples/cloud-routine/`](../examples/cloud-routine/) (its
+[README](../examples/cloud-routine/README.md) walks through both):
+
+- **[`routine.sample.json`](../examples/cloud-routine/routine.sample.json)** — a provider-neutral
+  *checklist* of every choice a routine needs (schedule, read-only connectors, the deny-list, the
+  review branch, a pointer to the standing prompt below). It's not consumed verbatim by any platform —
+  it's the list so you don't forget the load-bearing fields. Copy it, fill in the `TODO`s.
+- **[`github-action-automerge.sample.yml`](../examples/cloud-routine/github-action-automerge.sample.yml)** —
+  the GitHub Action from step 5: lands routine branches onto `main` non-force, abort-on-conflict,
+  test-gated, matching **all** routine branches (`claude/**`) so none is ever stranded. It lives under
+  `examples/` so cloning this repo never auto-runs it; copy it into `.github/workflows/` in your fork
+  to enable it.
+
+Both templates bake in the same rails this page states; neither contains any token or account id
+(those live in your Claude account, never in the repo).
 
 ### The paste-in prompt (the routine's standing instructions)
 
@@ -241,6 +293,7 @@ under the rails above — not to reinvent it.
 
 ## Where to go next
 
+- **The schedule template you adapt (routine config + the safe-landing Action):** [`../examples/cloud-routine/`](../examples/cloud-routine/).
 - **The local half + the local↔cloud split:** [INGEST-ARCHITECTURE.md](INGEST-ARCHITECTURE.md).
 - **Point the on-ramp at your data (the export-a-folder path you can run now):** [CONNECT.md](CONNECT.md).
 - **Stand the whole system up:** [SETUP.md](SETUP.md).

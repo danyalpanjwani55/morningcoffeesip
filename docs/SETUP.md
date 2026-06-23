@@ -21,7 +21,7 @@ journey now runs end to end on one command** (`python3 run.py` at the repo root)
 pile of sources, runs the genesis engine, prints a plain-English review packet, takes your
 ratify gate, and builds a cited wiki for each agent you approve. The ingest clean-up spine, the
 genesis reasoning core, the installer/scaffolder, the five steering skills, and the
-self-improvement loop **all live in this repo and pass their tests** (302 in total; the genesis
+self-improvement loop **all live in this repo and pass their tests** (337 in total; the genesis
 core is 74 of them). What runs today does so on **built-in sample data with a small offline
 stand-in for the AI** (a deterministic model used in place of a real one so the logic runs with
 no internet and no API key) — but you can point it at **your own folder of exported notes and
@@ -42,7 +42,7 @@ prove the engine's logic is real and let you read the full plan:
 
 **Why be this blunt?** Because the alternative — a setup guide that reads like everything
 works — would waste hours of yours hunting for a "connect Gmail" button that isn't built. The
-end-to-end on-ramp **does** run now (302 tests green, the genesis core 74 of them) and you can
+end-to-end on-ramp **does** run now (337 tests green, the genesis core 74 of them) and you can
 walk it on the sample in five minutes or on your own exported folder. What's still missing for
 a one-click run on your *live* company is the auto-pull connectors, a real model, and a ratify
 UI. This guide narrates the on-ramp end to end and tells you plainly at each stage: **BUILT**

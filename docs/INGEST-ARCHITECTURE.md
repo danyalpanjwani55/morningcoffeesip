@@ -47,7 +47,7 @@ control of what becomes part of the brain.
 | | **LOCAL — the Mac sync agent** | **CLOUD — the Claude routine** |
 |---|---|---|
 | **Sources** | iMessage, WhatsApp | Email, Drive/files, Calendar |
-| **Why this side** | The data is in private SQLite files on your Mac; **no cloud API exists** to fetch it | Reachable through normal account access; **no local code needed** |
+| **Why this side** | The data is in private SQLite files on your Mac; **no cloud API exists** to fetch it | Reachable through your connectors — **no local code to *fetch* it** (the processing then ships in `ingest/cloud/`) |
 | **Where it runs** | On your own machine | On a scheduled cloud agent pointed at this repo |
 | **Needs** | macOS **Full Disk Access** (a manual grant) | The connectors attached to the routine (read-only) |
 | **What leaves the machine** | Only **sanitized Events** you control — never raw messages | Derived notes only — never raw secret content |
@@ -209,7 +209,7 @@ contract is in [`ingest/allowlist.py`](../ingest/allowlist.py) (`build_allowlist
 
 ### What it is
 
-For email, Drive/files, and calendar there is **no local code at all.** These run as a scheduled
+For email, Drive/files, and calendar the **fetch** needs no local code — the connectors do it (the **processing** ships in `ingest/cloud/`). The fetch runs as a scheduled
 **Claude routine** — a cloud agent that runs on a clock, with read-only access to those accounts
 attached to it, pointed at a fresh copy of this repository. It reads what's new, drafts updates to
 the brain, and is a clean no-op when nothing changed. (This mirrors the upstream "brain-refresh"
@@ -227,14 +227,26 @@ local lanes correctly ingest nothing.
 
 ### How to set it up
 
-**Follow [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md)** for the full recipe + paste-in prompt. In short:
+**Follow [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md)** for the full turnkey recipe + paste-in prompt, and
+adapt the two starter files in [`../examples/cloud-routine/`](../examples/cloud-routine/) (a routine
+config + a safe-landing GitHub Action) rather than writing them from scratch. In short:
 
-1. Create a scheduled Claude routine pointed at this repository.
-2. Attach the **read-only** connectors it needs (email, Drive, calendar).
-3. Give it the job description (the paste-in prompt in [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md)).
-4. Schedule it (e.g. hourly). It keeps the email/Drive/calendar side of the brain current without
-   your computer being open — the exact complement to the local agent, which must run on your Mac —
-   and rewrites the correspondents file each run, which is also how the allowlist stays fresh.
+1. Connect **Gmail / Drive / Calendar** as **read-only** connectors in your Claude account.
+2. Create a scheduled **Claude routine** (claude.ai/code → Routines) pointed at a fresh clone of your
+   fork of this repository, with those read-only connectors attached.
+3. Give it the job description (the paste-in prompt in [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md)) — that
+   prompt is the de-welded "cloud-refresh" job, inlined.
+4. Schedule it (e.g. hourly) and turn on the safe-landing Action
+   ([template](../examples/cloud-routine/github-action-automerge.sample.yml)). It keeps the
+   email/Drive/calendar side of the brain current without your computer being open — the exact
+   complement to the local agent, which must run on your Mac — and rewrites the correspondents file
+   each run, which is also how the allowlist stays fresh.
+
+> **The split is now complete on both sides.** LOCAL = the runnable Mac sync agent
+> (`python -m ingest.local.sync`, [`ingest/local/`](../ingest/local/)) for iMessage/WhatsApp. CLOUD =
+> a scheduled Claude routine you stand up from [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md) + the
+> [`examples/cloud-routine/`](../examples/cloud-routine/) templates for email/Drive/calendar. Each
+> half covers exactly what the other cannot — together they are the whole ingest front.
 
 ---
 
@@ -277,6 +289,7 @@ with no correspondents list ingests nothing. Safe to run before you've set anyth
 ## Where to go next
 
 - **Stand up the cloud half (the full recipe + paste-in prompt):** [CLOUD-ROUTINE.md](CLOUD-ROUTINE.md).
+- **The schedule template you adapt (routine config + safe-landing Action):** [`../examples/cloud-routine/`](../examples/cloud-routine/).
 - **Point the on-ramp at your data:** [CONNECT.md](CONNECT.md).
 - **Stand the whole system up:** [SETUP.md](SETUP.md).
 - **What the machine is made of:** [SYSTEM.md](SYSTEM.md).
@@ -288,4 +301,4 @@ with no correspondents list ingests nothing. Safe to run before you've set anyth
 entrypoint (`ingest/local/sync.py`) runs the iMessage + WhatsApp adapters, correspondent-allowlists
 them, sanitizes via the shared spine, and writes proposals-only Events to a local JSONL store;
 `--dry-run` and absent/empty stores are a clean no-op. The cloud routine for email/Drive/calendar
-is a scheduled Claude routine (no local code), modeled on the upstream brain-refresh routine.*
+is a scheduled Claude routine for the **auth + pull**; its **processing half ships as tested code** in `ingest/cloud/` (`python -m ingest.cloud.refresh`), modeled on the upstream brain-refresh routine.*

@@ -1,0 +1,122 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SAMPLE — automerge-cloud-routine
+# A TEMPLATE you adapt, not live config. Copy it to `.github/workflows/` in YOUR
+# MorningCoffeeSip fork to enable it. (It lives under examples/ here, where GitHub
+# does NOT auto-run it — so cloning this repo never silently activates a workflow.)
+#
+# WHAT IT DOES
+#   Lands each cloud-routine run's per-run branch onto `main`. The assistant/routine
+#   platform delivers every run's output to its OWN throwaway branch (e.g.
+#   claude/beautiful-lamport-XXXXX) and typically CANNOT push `main` directly. This
+#   workflow merges those branches into `main` so the scheduled routine's proposals
+#   actually reach the brain on the branch your /morning gate reads.
+#
+# WHY THE `claude/**` MATCHER (the load-bearing fix — keep it)
+#   The routine platform REASSIGNS the adjective-noun branch base over time
+#   (beautiful-lamport → brave-lamport → blissful-ride → …). Pinning ONE prefix
+#   silently strands every later run's branch — a real incident stranded ~95
+#   branches over two days, and the next morning gate then ran on stale `main`.
+#   Match ALL routine branches. The merge is still non-force + abort-on-conflict +
+#   test-gated, so matching broadly is safe.
+#
+# SAFETY (these are the rails — do not weaken them)
+#   - NON-force merge. On ANY conflict it ABORTS and leaves the routine branch
+#     untouched for manual recovery — it never clobbers `main`.
+#   - Serialized (concurrency group) so concurrent runs can't race on `main`.
+#   - Idempotent: a branch already contained in `main` is a no-op.
+#   - Reversible: each landing is an ordinary merge commit (revert with `git revert`).
+#   - Test gate: pushes that touch code must pass your test suite before landing;
+#     content-only pushes land ungated. Failure mode = same as a conflict (abort,
+#     branch preserved, `main` untouched).
+#
+# ADAPT THESE BEFORE USE
+#   - The bot identity (user.name / user.email) below is a generic placeholder.
+#   - The CODE-PATH glob + test command match THIS repo's layout (python test_*.py /
+#     loop / ingest / skills / .github / requirements.txt). Edit to your tree.
+#   - If you have no portable test suite yet, you may delete the whole test-gate
+#     block — but then EVERY routine push lands ungated, so prefer to keep it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: automerge-cloud-routine
+
+on:
+  push:
+    branches:
+      # Match ALL routine branches — never pin one adjective-noun prefix (see header).
+      - 'claude/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  # Serialize: only one landing onto main at a time.
+  group: automerge-cloud-routine-main
+  cancel-in-progress: false
+
+jobs:
+  merge-to-main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (full history)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge the routine branch into main
+        run: |
+          set -euo pipefail
+          BR="${GITHUB_REF#refs/heads/}"
+          echo "Routine branch pushed: $BR"
+          git config user.name  "mcs-automerge"
+          git config user.email "automerge@users.noreply.github.com"
+          git fetch origin "$BR" main
+
+          # Already landed? (idempotent — safe re-runs)
+          if git merge-base --is-ancestor "origin/$BR" origin/main; then
+            echo "Branch already contained in main — nothing to do."
+            exit 0
+          fi
+
+          # CODE-PATH TEST GATE — content-only refreshes land ungated; pushes that
+          # touch code must pass the suite first. Edit the glob + test command to
+          # match your tree. (Delete this whole block only if you have no tests yet.)
+          if git diff --name-only "origin/main...origin/$BR" \
+               | grep -qE '^(ingest/|loop/|genesis/|skills/.*/scripts/|tests/|\.github/|requirements\.txt|.*test_.*\.py)$'; then
+            echo "Code paths touched — running the test suite as a merge gate."
+            git checkout -q "origin/$BR"
+            pip install -q -r requirements.txt 2>/dev/null || true
+            FAILS=0
+            # This repo's tests are plain `python test_*.py` files (exit 5 = "no tests
+            # collected", treated as OK). Replace with `pytest -q` if you adopt pytest.
+            while IFS= read -r f; do
+              python3 "$f" -q >/dev/null 2>&1; rc=$?
+              if [ "$rc" -ne 0 ] && [ "$rc" -ne 5 ]; then echo "RED: $f"; FAILS=$((FAILS+1)); fi
+            done < <(git ls-files '**/test_*.py' 'test_*.py')
+            if [ "$FAILS" -ne 0 ]; then
+              echo "::error::$FAILS failing test file(s) on $BR — merge blocked, branch left intact."
+              exit 1
+            fi
+            git checkout -q main
+          else
+            echo "Content-only push — test gate skipped by design."
+          fi
+
+          # Try up to 3 times in case the cadence advances main mid-merge.
+          for attempt in 1 2 3; do
+            git reset --hard origin/main
+            if ! git merge --no-edit "origin/$BR"; then
+              git merge --abort || true
+              echo "::error::Merge conflict landing $BR onto main — branch left intact for manual recovery."
+              exit 1
+            fi
+            if git push origin HEAD:main; then
+              echo "Landed $BR onto main (attempt $attempt)."
+              exit 0
+            fi
+            echo "Push rejected (main moved); refetching and retrying ($attempt/3)..."
+            git fetch origin main
+          done
+
+          echo "::error::Could not land $BR after 3 attempts (main kept moving) — branch left intact."
+          exit 1

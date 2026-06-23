@@ -68,9 +68,14 @@ for _p in (_REPO_ROOT, _GENESIS):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from ingest import EmailAdapter, LocalFilesAdapter, ingest_records  # noqa: E402
+from ingest import EmailAdapter, IngestedCorpus, LocalFilesAdapter, ingest_records  # noqa: E402
 from ingest.allowlist import build_allowlist  # noqa: E402
 from ingest.allowlist import summarize as summarize_allowlist  # noqa: E402
+from ingest.cloud import (  # noqa: E402
+    NormalizedRecords,
+    correspondents_from_gmail,
+    process_cloud_records,
+)
 from ingest.local.sync import iter_local_records  # noqa: E402
 
 from genesis_contracts import EgressGate, Proposal  # noqa: E402
@@ -380,6 +385,7 @@ def run_journey(
     today: str | None = None,
     user_email: str | None = None,
     local_stores: dict[str, str] | None = None,
+    cloud_records: NormalizedRecords | None = None,
     out_stream=None,
 ) -> dict:
     """Walk the whole on-ramp once and return a structured summary.
@@ -390,7 +396,10 @@ def run_journey(
                     lane builds the correspondent allowlist from its SENT folder;
                     the on-device message lanes (iMessage/WhatsApp) are folded in
                     WHEN their stores are present, gated by that allowlist, and
-                    cleanly skipped otherwise (off-Mac / no Full Disk Access).
+                    cleanly skipped otherwise (off-Mac / no Full Disk Access). A
+                    CLOUD connector dump (Gmail/Drive/Calendar the scheduled
+                    routine already pulled) is folded in WHEN passed, through the
+                    same shared spine, under the SAME ONE allowlist.
       3. GENESIS  — claims → resolve → pillars → meta-initiatives → roster →
                     review packet (proposals only).
       4. REVIEW   — print the Type-2 "In plain terms" packet.
@@ -403,8 +412,21 @@ def run_journey(
     the default (``None``) uses the real macOS locations, which simply don't exist
     off-Mac, so the local lanes are a no-op there. Tests pass synthetic fixtures.
 
-    Returns a dict with the ingest counts, the packet, the ratified proposals,
-    and the wiki build results — the same things ``test_e2e.py`` asserts on.
+    ``cloud_records`` optionally folds in the CLOUD lane (the email/Drive/Calendar
+    half of the architecture split — ``docs/INGEST-ARCHITECTURE.md``): the
+    normalized connector dump the scheduled Claude routine already pulled
+    (``ingest.cloud.NormalizedRecords``). Like ``local_stores`` it is OPT-IN — the
+    default (``None``) means the on-ramp runs on notes + the exported mbox alone,
+    and this code never reaches a connector itself (the routine does the
+    auth+pull; the on-ramp only PROCESSES its output). When BOTH the exported mbox
+    AND a cloud Gmail dump carry SENT mail, the founder's correspondents are the
+    UNION of who they emailed in both, and ONE canonical ``Allowlist`` is built
+    from that union — it gates the local message lanes AND the cloud inbound Gmail
+    (the cloud lane FEEDS the one allowlist; it never owns a second one).
+
+    Returns a dict with the ingest counts (``ingest`` + ``cloud`` when a cloud dump
+    ran), the packet, the ratified proposals, and the wiki build results — the
+    same things ``test_e2e.py`` / ``ingest/cloud/test_e2e_cloud.py`` assert on.
     """
     llm = llm or OfflineGenesisLLM()
     egress = egress or EgressGate()
@@ -451,13 +473,26 @@ def run_journey(
 
     # --- 2. INGEST --------------------------------------------------------- #
     step(2, "INGEST — sanitize → normalize → dedup")
-    # The email lane is BOTH a source AND the producer of the correspondent
+    # The email lane is BOTH a source AND a producer of the correspondent
     # allowlist: draining it once (``build()``) harvests its SENT folder into
-    # ``sent_correspondents`` AND returns the inbound records. From that exact
-    # set we build the shared allowlist — the SAME people then gate the on-device
-    # message lanes below (the producer→consumer seam, in code).
+    # ``sent_correspondents`` AND returns the inbound records.
     email_records = email_adapter.build()
-    allowlist = build_allowlist(email_adapter.sent_correspondents, contacts={})
+
+    # THE ONE ALLOWLIST. The founder's correspondents are everyone they have
+    # emailed — and email reaches the on-ramp from up to two sources: the exported
+    # mbox (above) and, when passed, the CLOUD Gmail dump. We UNION both SENT
+    # correspondent sets and build a SINGLE canonical ``Allowlist`` from the union
+    # (the cloud lane's correspondents are harvested by the SAME canonical
+    # ``correspondents_from_gmail`` → ``harvest_sent_correspondents`` the rest of
+    # the system uses — no fork, no second allowlist). That one allowlist gates
+    # BOTH the on-device message lanes AND the cloud inbound Gmail below.
+    cloud_correspondents = (
+        correspondents_from_gmail(cloud_records.gmail, user_email=user_email or "")
+        if cloud_records is not None
+        else set()
+    )
+    correspondents = set(email_adapter.sent_correspondents) | cloud_correspondents
+    allowlist = build_allowlist(sorted(correspondents), contacts={})
 
     # The on-device message lanes (iMessage / WhatsApp) are folded into the SAME
     # corpus ONLY when the caller explicitly points at their stores via
@@ -475,20 +510,51 @@ def run_journey(
 
     records = [*notes_adapter.read(), *email_records, *local_records]
     ingested = ingest_records(records, gate=egress)
+
+    # The CLOUD lane (email/Drive/Calendar — the cloud half of the split) is folded
+    # in ONLY when a connector dump is passed (opt-in, like ``local_stores``). It
+    # runs through the SAME shared spine via ``process_cloud_records``, gated by
+    # the ONE allowlist we just built (injected, so cloud inbound is filtered by
+    # the SAME correspondent set as the local lanes — not a second one it would
+    # self-build). Its surviving Events merge into the one corpus genesis consumes.
+    cloud_processed = (
+        process_cloud_records(
+            cloud_records,
+            user_email=user_email or "",
+            gate=egress,
+            allowlist=allowlist,
+            ingested_at=today,
+        )
+        if cloud_records is not None
+        else None
+    )
+
+    corpus = ingested.corpus
+    if cloud_processed is not None:
+        corpus = IngestedCorpus(
+            [*ingested.corpus.all_events(), *cloud_processed.corpus.all_events()]
+        )
+
+    total_kept = ingested.kept + (cloud_processed.kept if cloud_processed else 0)
     out(f"          correspondents : {summarize_allowlist(allowlist)['token_total']} "
-        f"identity token(s) from your sent mail → the message-lane allowlist")
+        f"identity token(s) from your sent mail → the one allowlist")
     out(f"          local messages : {len(local_records)} on-device record(s) "
         f"(iMessage/WhatsApp; 0 if no store / not macOS)")
-    out(f"          kept           : {ingested.kept} event(s) → the corpus")
-    out(f"          dropped private: {ingested.dropped_private} "
+    if cloud_processed is not None:
+        out(f"          cloud (email/Drive/Cal): {cloud_processed.gmail_admitted} inbound "
+            f"admitted of {cloud_processed.gmail_inbound} · {cloud_processed.drive_seen} doc(s) · "
+            f"{cloud_processed.calendar_seen} event(s) → {cloud_processed.kept} kept")
+    out(f"          kept           : {total_kept} event(s) → the corpus")
+    out(f"          dropped private: {ingested.dropped_private + (cloud_processed.dropped_private if cloud_processed else 0)} "
         f"(secrets/PII never become events, never reach the model)")
-    out(f"          dropped dup    : {ingested.dropped_duplicate}")
-    out(f"          dropped empty  : {ingested.dropped_empty}")
-    if ingested.kept == 0:
+    out(f"          dropped dup    : {ingested.dropped_duplicate + (cloud_processed.dropped_duplicate if cloud_processed else 0)}")
+    out(f"          dropped empty  : {ingested.dropped_empty + (cloud_processed.dropped_empty if cloud_processed else 0)}")
+    if total_kept == 0:
         out("\n          No usable events. Point --sources at a folder of "
-            ".md/.txt notes and/or .eml mail.")
+            ".md/.txt notes and/or .eml mail (or pass a cloud connector dump).")
         return {
             "ingest": ingested,
+            "cloud": cloud_processed,
             "packet": None,
             "ratified": [],
             "wikis": [],
@@ -497,7 +563,7 @@ def run_journey(
     # --- 3. GENESIS -------------------------------------------------------- #
     step(3, "GENESIS — claims → resolve → pillars → meta-initiatives → roster")
     packet = run_genesis(
-        ingested.corpus,
+        corpus,
         roster=BASE_ROSTER,
         since="inception",
         llm=llm,
@@ -528,7 +594,7 @@ def run_journey(
     # --- 6. BUILD ---------------------------------------------------------- #
     step(6, "BUILD — a cited DRAFT wiki per ratified agent")
     wikis = build_ratified_wikis(
-        ratified, ingested.corpus, llm=llm, egress=egress, today=today
+        ratified, corpus, llm=llm, egress=egress, today=today
     )
     if wikis:
         for r in wikis:
@@ -545,6 +611,7 @@ def run_journey(
 
     return {
         "ingest": ingested,
+        "cloud": cloud_processed,
         "packet": packet,
         "ratified": ratified,
         "wikis": wikis,

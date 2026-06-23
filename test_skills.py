@@ -36,6 +36,18 @@ SKILL_NAMES = [
     "atomic-decompose",
 ]
 
+# Routine skills — the scheduled agents (Lane B), de-welded from the upstream
+# cloud-refresh routine. NOT part of the founder's hand-driven daily loop, but
+# held to the SAME portability contract: exists, namespaced, leak-clean.
+ROUTINE_SKILLS = [
+    "cloud-refresh",
+]
+
+# Every shipped skill the suite covers (steering loop + routines). The
+# exists / namespaced / leak-clean assertions below apply to all of them; only
+# the directory-completeness test distinguishes the two groups.
+ALL_SKILLS = SKILL_NAMES + ROUTINE_SKILLS
+
 # The exact namespaced template every skill's `name:` field must carry. The
 # literal `<project>` placeholder is intentional — it is filled per clone at
 # resolve time (mcs_namespace.qualify), never hardcoded in the shipped file.
@@ -141,23 +153,26 @@ def _frontmatter_name(body: str) -> str | None:
 
 # --- 1. EXISTS -------------------------------------------------------------
 
-@pytest.mark.parametrize("skill", SKILL_NAMES)
+@pytest.mark.parametrize("skill", ALL_SKILLS)
 def test_skill_file_exists(skill):
     p = _skill_path(skill)
     assert p.is_file(), f"missing skill file: {p}"
     assert _read(skill).strip(), f"empty skill file: {p}"
 
 
-def test_all_seven_present_and_no_extras():
-    """Exactly the seven steering skills, nothing stray."""
+def test_exactly_the_covered_skills_present_and_no_extras():
+    """Exactly the covered skills on disk — the seven steering skills plus the
+    routine skills — and nothing stray. A new skill dir that the suite does not
+    cover trips this guard (forces the test to be extended alongside the skill).
+    """
     on_disk = {d.name for d in SKILLS_DIR.iterdir()
                if d.is_dir() and (d / "SKILL.md").is_file()}
-    assert on_disk == set(SKILL_NAMES)
+    assert on_disk == set(ALL_SKILLS)
 
 
 # --- 2. NAMESPACED ---------------------------------------------------------
 
-@pytest.mark.parametrize("skill", SKILL_NAMES)
+@pytest.mark.parametrize("skill", ALL_SKILLS)
 def test_name_is_namespaced_template(skill):
     """The `name:` frontmatter is exactly mcs:<project>:<skill>."""
     name = _frontmatter_name(_read(skill))
@@ -166,7 +181,7 @@ def test_name_is_namespaced_template(skill):
     )
 
 
-@pytest.mark.parametrize("skill", SKILL_NAMES)
+@pytest.mark.parametrize("skill", ALL_SKILLS)
 def test_name_resolves_to_valid_mcs_id(skill):
     """Substituting a real project slug yields an id mcs_namespace accepts,
     and qualify() for this skill name reproduces it."""
@@ -180,7 +195,7 @@ def test_name_resolves_to_valid_mcs_id(skill):
     assert mcs_namespace.qualify(skill, project="acme-co") == concrete
 
 
-@pytest.mark.parametrize("skill", SKILL_NAMES)
+@pytest.mark.parametrize("skill", ALL_SKILLS)
 def test_body_references_namespace_form(skill):
     """The body documents the mcs:<project>:... addressing (de-weld carries the
     namespace convention, not just the frontmatter)."""
@@ -189,7 +204,7 @@ def test_body_references_namespace_form(skill):
 
 # --- 3. LEAK-CLEAN ---------------------------------------------------------
 
-@pytest.mark.parametrize("skill", SKILL_NAMES)
+@pytest.mark.parametrize("skill", ALL_SKILLS)
 def test_no_forbidden_words(skill):
     """No source-company name, vendor, or real person survives de-welding."""
     lowered = _read(skill).lower()
@@ -198,7 +213,7 @@ def test_no_forbidden_words(skill):
     assert not hits, f"{skill}: leaked origin-specific terms: {hits}"
 
 
-@pytest.mark.parametrize("skill", SKILL_NAMES)
+@pytest.mark.parametrize("skill", ALL_SKILLS)
 def test_no_home_or_origin_paths(skill):
     """No home path or source-company-internal absolute path."""
     lowered = _read(skill).lower()
@@ -206,7 +221,7 @@ def test_no_home_or_origin_paths(skill):
     assert not hits, f"{skill}: leaked origin path fragments: {hits}"
 
 
-@pytest.mark.parametrize("skill", SKILL_NAMES)
+@pytest.mark.parametrize("skill", ALL_SKILLS)
 def test_uses_portable_brain_root(skill):
     """Paths are resolved via $BRAIN_ROOT / mcs_paths, the portable handle —
     not a hardcoded location."""

@@ -43,7 +43,7 @@ import agent_wiki_builder        # noqa: E402
 
 # The fake secret + PII planted in the sample's two DO-NOT-INGEST notes. These
 # must never surface in any produced artifact or printed output.
-_SECRET_NEEDLES = ("sk-TESTfakekey", "123-45-6789")
+_SECRET_NEEDLES = ("sk-TESTfakekey", "123-45-6789")  # pragma: allowlist secret
 
 
 @pytest.fixture()
