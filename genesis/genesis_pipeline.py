@@ -222,6 +222,140 @@ def _prior_archive_lines(text: str) -> list[str]:
     return out
 
 
+def _assemble_pillar_body(
+    *,
+    header: str,
+    summary: str,
+    current_lines: list[str],
+    evolution_new: list[str],
+    archive_lines: list[str],
+    archive_extra: list[str] | None = None,
+) -> str:
+    """Render the full pillar draft body (header + generated block). Single
+    source of truth so the auto-split re-render matches the normal write byte
+    for byte. ``archive_extra`` carries non-bullet lines (e.g. a child-page
+    pointer) appended after the archive bullets."""
+    gen: list[str] = [
+        _GEN_START,
+        "",
+        "## Current state summary",
+        "",
+        summary,
+        "",
+        "## Current claims",
+        "",
+    ]
+    gen += current_lines or ["- (no anchored claims yet)"]
+    gen += ["", "## Evolution", ""]
+    gen += evolution_new or ["- (no superseded facts this pass)"]
+    gen += ["", "## Archived claims", ""]
+    gen += archive_lines or ["- (none)"]
+    gen += archive_extra or []
+    gen += ["", _GEN_END]
+    return header + "\n\n" + "\n".join(gen) + "\n"
+
+
+def _archive_child_path(parent_path: str, n: int) -> str:
+    """Deterministic path for the Nth archive child of a parent pillar draft:
+    ``pillar_<name>.archive-<NN>.md`` beside the parent."""
+    base = parent_path[: -len(".md")] if parent_path.endswith(".md") else parent_path
+    return f"{base}.archive-{n:02d}.md"
+
+
+def _split_overflow_archive(
+    parent_path: str,
+    *,
+    header: str,
+    archive_lines: list[str],
+    current_lines: list[str],
+    evolution_new: list[str],
+    summary: str,
+    today: str,
+) -> str:
+    """Lossless cap (replaces the old hard-cap ``del``): when the parent draft is
+    over ``_MAX_DRAFT_LINES``, move the OLDEST archive bullets into a dated child
+    page and re-point the parent to it. Nothing is dropped — the overflow is
+    relocated. Returns the trimmed parent body (and writes the child page).
+
+    Relocates the OLDEST archive bullets first; if the archive is exhausted and
+    the live section alone still exceeds the cap, relocates the oldest live claim
+    lines too (the lossless mirror of the old del-tail — the parent stays bounded
+    by relocating overflow, never by dropping it)."""
+    # Find the largest K such that keeping the NEWEST K archive bullets on the
+    # parent leaves it under the cap. We move the oldest (len - K) to a child.
+    kept = list(archive_lines)
+    moved: list[str] = []
+    # Existing child pages this pillar already spilled (so we chain, never clobber).
+    child_index = 1
+    while os.path.exists(_archive_child_path(parent_path, child_index)):
+        child_index += 1
+    pointer = (
+        f"- (older archived claims moved to "
+        f"[{os.path.basename(_archive_child_path(parent_path, child_index))}]"
+        f"({os.path.basename(_archive_child_path(parent_path, child_index))})"
+        + (f", split {today}" if today else "")
+        + ")"
+    )
+
+    def _parent_body(keep_archive: list[str], keep_current: list[str], with_pointer: bool) -> str:
+        return _assemble_pillar_body(
+            header=header,
+            summary=summary,
+            current_lines=keep_current,
+            evolution_new=evolution_new,
+            archive_lines=keep_archive,
+            archive_extra=[pointer] if with_pointer else None,
+        )
+
+    # Peel the oldest archive bullet to the child until the parent fits.
+    while kept and len(_parent_body(kept, current_lines, with_pointer=True).splitlines()) > _MAX_DRAFT_LINES:
+        moved.append(kept.pop(0))   # oldest first (archive is appended newest-last)
+
+    # If the archive is exhausted and the LIVE section alone still exceeds the cap,
+    # relocate the oldest live claim lines too — the lossless mirror of the old
+    # del-tail: the parent stays bounded by relocating overflow, never dropping it.
+    kept_current = list(current_lines)
+    moved_current: list[str] = []
+    while (not kept) and len(kept_current) > 1 and len(
+        _parent_body(kept, kept_current, with_pointer=True).splitlines()
+    ) > _MAX_DRAFT_LINES:
+        moved_current.append(kept_current.pop(0))   # oldest first
+
+    if not moved and not moved_current:
+        # Genuinely nothing relocatable (a tiny draft already over cap). Don't
+        # delete; return as-is rather than the old lossy trim.
+        return _assemble_pillar_body(
+            header=header,
+            summary=summary,
+            current_lines=current_lines,
+            evolution_new=evolution_new,
+            archive_lines=archive_lines,
+        )
+
+    # Write the dated child page carrying the relocated (oldest) overflow.
+    child_path = _archive_child_path(parent_path, child_index)
+    _assert_under_out(child_path)
+    child_header = (
+        f"# Pillar archive (child {child_index:02d}): "
+        f"{os.path.basename(parent_path)}\n\n"
+        "_status: proposed_\n\n"
+        f"> Overflow split off"
+        + (f" on {today}" if today else "")
+        + f" from `{os.path.basename(parent_path)}` to keep the parent under the "
+        "line cap. Older entries first. Nothing here is deleted — only relocated."
+    )
+    child_body = (
+        child_header
+        + "\n\n## Archived claims (relocated, oldest first)\n\n"
+        + "\n".join(moved + moved_current)
+        + "\n"
+    )
+    with open(child_path, "w", encoding="utf-8") as fh:
+        fh.write(child_body)
+
+    return _parent_body(kept, kept_current, with_pointer=True)
+
+
 def _write_pillar_draft(pillar: PillarState, *, today: str = "") -> str:
     """Surgically write/refresh a Type-1 (FOR-AI) pillar draft under OUT_DIR.
 
@@ -295,34 +429,30 @@ def _write_pillar_draft(pillar: PillarState, *, today: str = "") -> str:
             + archive_lines[-_MAX_ARCHIVE_LINES:]
         )
 
-    gen: list[str] = [
-        _GEN_START,
-        "",
-        "## Current state summary",
-        "",
-        pillar.summary,
-        "",
-        "## Current claims",
-        "",
-    ]
-    gen += current_lines or ["- (no anchored claims yet)"]
-    gen += ["", "## Evolution", ""]
-    gen += evolution_new or ["- (no superseded facts this pass)"]
-    gen += ["", "## Archived claims", ""]
-    gen += archive_lines or ["- (none)"]
-    gen += ["", _GEN_END]
+    body = _assemble_pillar_body(
+        header=header,
+        summary=pillar.summary,
+        current_lines=current_lines,
+        evolution_new=evolution_new,
+        archive_lines=archive_lines,
+    )
 
-    body = header + "\n\n" + "\n".join(gen) + "\n"
-
-    # Hard cap (rule 4): if still over, trim from the archive tail (already the
-    # oldest-elided form) rather than dropping live current claims.
-    out_lines = body.splitlines()
-    if len(out_lines) > _MAX_DRAFT_LINES:
-        # Drop archive bullets from the end until under the cap, leaving the
-        # elision summary in place.
-        while len(out_lines) > _MAX_DRAFT_LINES and out_lines and out_lines[-2].startswith("- "):
-            del out_lines[-2]
-        body = "\n".join(out_lines) + "\n"
+    # Hard cap (rule 4) — LOSSLESS auto-split (never silently delete, even the
+    # archive: CLAUDE.md §3 knowledge-hygiene + docs/SYSTEM.md). If the draft is
+    # still over the cap, move the OLDEST archived bullets out into a dated child
+    # page and re-point the parent's archive section to it. Live current claims,
+    # evolution, and the newest archive bullets stay on the parent; nothing is
+    # dropped — the overflow is relocated, not deleted.
+    if len(body.splitlines()) > _MAX_DRAFT_LINES:
+        body = _split_overflow_archive(
+            path,
+            header=header,
+            archive_lines=archive_lines,
+            current_lines=current_lines,
+            evolution_new=evolution_new,
+            summary=pillar.summary,
+            today=today,
+        )
 
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(body)
