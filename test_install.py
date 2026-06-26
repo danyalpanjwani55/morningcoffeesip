@@ -20,6 +20,11 @@ def _clean_env(monkeypatch, tmp_path):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.delenv("MCS_PROJECT", raising=False)
     monkeypatch.setenv(mcs_paths.ENV_CONFIG, str(tmp_path / "cfg.json"))
+    # Isolate the user's ~/.claude so install's hook-install step writes into tmp,
+    # never the real home, when a test drives install.main().
+    fake_home = tmp_path / "home"
+    fake_home.mkdir(exist_ok=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
     mcs_paths.reset_cache()
     yield
     mcs_paths.reset_cache()

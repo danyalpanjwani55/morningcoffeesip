@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s\\n' 'ROUTE-FIRST: should a roster specialist handle this instead of you? Route it if so.' 'CANONICAL-CHECK: does this reply violate the CLAUDE.md chain, the open skill-deltas, or agreed-framings.md? If so, fix it before replying.'"
+          }
+        ]
+      }
+    ]
+  }
+}

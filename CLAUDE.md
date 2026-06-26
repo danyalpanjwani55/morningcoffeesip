@@ -55,6 +55,12 @@ Steps 1–2 do most of the work. Reach for them before any clever engineering.
 1. **Think before coding.** State your assumptions out loud. If the task reads two ways, show
    **both** readings — don't silently pick one. If a simpler approach exists, say so. If it's
    genuinely unclear, **stop and ask** rather than guess.
+   - **Clarify-gate — cost-gate the question.** Don't ask reflexively; ask when a wrong guess
+     is *expensive*: it would cause rework, fan out to other steps or agents, or produce an
+     external artifact (a send, a file, anything someone else sees). Then ask **one** line. If
+     the guess is cheap and reversible, proceed and **state the assumption** instead of
+     stopping. The cost of being wrong, not the mere presence of doubt, is what triggers the
+     question.
 2. **Simplest thing that works.** Nothing you weren't asked for: no abstractions for one-time
    code, no "flexibility" nobody requested, no error-handling for cases that can't happen. If
    200 lines could be 50, write the 50.
@@ -107,6 +113,17 @@ skill, engine, and change.
 - **Twin-peer.** Pair each builder with a **different-engine** reviewer-twin. Both plan; one
   writes; the other reviews; the requirement-owner co-signs. A pair must not be able to
   green-light itself, and two instances of the same model are not diverse lenses.
+  - **Right-size review by blast radius.** Don't ceremony-review everything at one intensity.
+    First ask the **blast-radius question:** if this change is wrong, how far does the damage
+    reach and can I take it back? Then pick the rung:
+    - **Trivial + reversible** (a typo, a comment, a doc line, a local-only tweak you can undo
+      in seconds) → **one careful self-pass.** No twin needed.
+    - **Standard** (normal code/feature work, locally reversible) → **one independent
+      reviewer** — the different-engine twin above.
+    - **Irreversible / destructive / external / safety-bearing** (anything matching a §4 hard
+      limit, anything others see, anything you can't cleanly undo) → the **full diverse-lens
+      gauntlet** (multiple distinct reviewers) **plus the operator gate.**
+    When unsure which rung, round **up**.
 
 - **Routing + drop-recovery.** Route a code task by expected output size (small → fast/cheap
   model; large or broad → heavy orchestrator; borderline → cheap). On a transport drop,

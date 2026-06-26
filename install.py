@@ -3,17 +3,19 @@
 One command from a fresh ``git clone`` to a working, empty brain:
 check deps -> write/merge config -> scaffold the empty pillar + base-roster
 template tree -> namespace whatever skills have been ported into ``skills/`` ->
-print the next step (run genesis).
+merge the pre-response discipline hook into the user's ``~/.claude/settings.json``
+-> print the next step (run genesis).
 
 Run it::
 
     python3 install.py [--brain-root PATH] [--project SLUG] [--force] [--dry-run]
 
-Stdlib-only. Writes ONLY under the resolved brain root and the config dir; it
-reads ``skills/`` but never writes a skill file (skills are ported by a separate
-lane). It does NOT run ``git init``, does NOT create ``.gitignore``, does NOT
-delete anything, and does NOT touch the network. Those are operator-gated (see
-BUILD-SPEC-03 §9 GATED-FOR-OPERATOR).
+Stdlib-only. Writes ONLY under the resolved brain root, the config dir, and the
+user's ``~/.claude`` dir (the hook-merge step, below); it reads ``skills/`` but
+never writes a skill file (skills are ported by a separate lane). It does NOT run
+``git init``, does NOT create ``.gitignore``, does NOT delete anything, and does
+NOT touch the network. Those are operator-gated (see BUILD-SPEC-03 §9
+GATED-FOR-OPERATOR).
 
 Idempotent: a second run with no flags is a clean no-op (the skeleton is kept,
 the config is a merge, the skill manifest is rebuilt only when ``skills/`` has
@@ -50,6 +52,13 @@ _PILLAR_DIRS = (
 # it without knowing the brain root.
 _SKILL_MANIFEST_REL = "agents/skills.manifest.json"
 _SKILL_MANIFEST_CFG = "skills.manifest.json"
+
+# The repo ships its own Claude Code settings carrying the pre-response hook
+# (route-first + canonical-check). The installer merges that hook into the clone
+# user's own ``~/.claude/settings.json`` so the discipline fires in THEIR Claude
+# Code, not just inside this repo's checkout.
+_REPO_SETTINGS_REL = ".claude/settings.json"
+_USER_SETTINGS_REL = "settings.json"  # under the user's ~/.claude dir
 
 _BRAIN_README = """\
 # Your company brain
@@ -269,6 +278,91 @@ def _install_skills(skills_dir: Path, brain: Path, config_dir: Path,
     return len(skill_names)
 
 
+def _user_claude_dir() -> Path:
+    """The clone user's Claude Code config dir (``~/.claude``). Injected by the
+    installer step so tests can point it at a tmp dir; expanded + absolute, NOT
+    required to exist (the step creates it)."""
+    return (Path.home() / ".claude").expanduser().absolute()
+
+
+def _merge_hooks(into: dict, repo_settings: dict) -> bool:
+    """Merge the repo's ``hooks`` into the user's settings dict IN PLACE, without
+    clobbering the user's unrelated keys or duplicating a hook entry that is
+    already present verbatim. Returns True iff anything changed.
+
+    Shape per Claude Code: ``hooks[<EventName>]`` is a list of matcher-groups;
+    we append each repo group the user does not already carry (by value)."""
+    repo_hooks = repo_settings.get("hooks")
+    if not isinstance(repo_hooks, dict):
+        return False
+    user_hooks = into.setdefault("hooks", {})
+    if not isinstance(user_hooks, dict):
+        # The user's `hooks` is some non-object — refuse to guess; leave it.
+        return False
+    changed = False
+    for event, groups in repo_hooks.items():
+        if not isinstance(groups, list):
+            continue
+        existing = user_hooks.setdefault(event, [])
+        if not isinstance(existing, list):
+            continue
+        for group in groups:
+            if group not in existing:  # value-equality dedup => idempotent
+                existing.append(group)
+                changed = True
+    return changed
+
+
+def _install_hook(repo: Path, user_claude_dir: Path, *,
+                  force: bool, dry_run: bool) -> bool:
+    """Merge the repo's pre-response hook into the user's ``~/.claude/
+    settings.json``. Reads the repo's ``.claude/settings.json`` (read-only) and
+    deep-merges its ``hooks`` block into the user's settings, never clobbering
+    the user's other keys and never duplicating an already-present hook. Writes
+    ONLY the user's settings file, guarded under ``user_claude_dir``. Idempotent:
+    a re-run with the hook already there is a no-op (unless ``force`` rewrites).
+    Returns True iff the user's file was written."""
+    repo_settings_file = repo / _REPO_SETTINGS_REL
+    if not repo_settings_file.is_file():
+        # The repo did not ship a settings file — nothing to install. Honest,
+        # surfaced no-op (matches _install_skills' empty case).
+        print(f"hook: no {_REPO_SETTINGS_REL} in repo — nothing to install")
+        return False
+    try:
+        repo_settings = json.loads(
+            repo_settings_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise _InstallError(
+            f"repo {_REPO_SETTINGS_REL} is not valid JSON: {e}") from e
+
+    user_settings_file = user_claude_dir / _USER_SETTINGS_REL
+    existing: dict = {}
+    if user_settings_file.is_file():
+        try:
+            loaded = json.loads(user_settings_file.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing = loaded
+        except json.JSONDecodeError:
+            existing = {}  # a malformed user file is replaced with a clean one
+
+    merged = dict(existing)  # don't mutate the read-back; build the new doc
+    changed = _merge_hooks(merged, repo_settings)
+    if not changed and not force and user_settings_file.is_file():
+        print(f"hook present, unchanged: {user_settings_file}")
+        return False
+
+    body = json.dumps(merged, indent=2, sort_keys=True) + "\n"
+    if dry_run:
+        print(f"[dry-run] would merge pre-response hook into "
+              f"{user_settings_file}")
+        return False
+    _assert_under(user_settings_file, user_claude_dir)
+    user_settings_file.parent.mkdir(parents=True, exist_ok=True)
+    user_settings_file.write_text(body, encoding="utf-8")
+    print(f"installed pre-response hook -> {user_settings_file}")
+    return True
+
+
 def _brain_already_initialized(brain: Path) -> bool:
     """A pre-existing, non-empty brain dir (its marker README present) means
     'already initialized'."""
@@ -340,6 +434,14 @@ def main(argv: list[str]) -> int:
         skill_count = _install_skills(
             skills_dir, brain, config_file.parent, project,
             force=args.force, dry_run=args.dry_run)
+
+        # 6. Merge the pre-response discipline hook (route-first + canonical-
+        #    check) into the user's own ~/.claude/settings.json, so it fires in
+        #    their Claude Code, not only inside this repo. Idempotent merge that
+        #    never clobbers the user's other settings.
+        _install_hook(
+            mcs_paths.repo_root(), _user_claude_dir(),
+            force=args.force, dry_run=args.dry_run)
     except _InstallError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
@@ -347,7 +449,7 @@ def main(argv: list[str]) -> int:
         print(f"ERROR: write failed: {e}", file=sys.stderr)
         return 1
 
-    # 6. Next step.
+    # 7. Next step.
     if not args.dry_run:
         _print_next_step(brain, project, skill_count)
     else:

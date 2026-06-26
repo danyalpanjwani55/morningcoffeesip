@@ -110,6 +110,10 @@ repeated friction — file it into `ops/exchange/skill-deltas-ledger.md` `status
 **immediately**, `born: <date> · in-the-moment-callout · <anchor>`, with the same recurrence
 check (escalate a match, don't duplicate). An unfiled callout is a lost callout.
 
+**The entrypoint:** the moment a substantive correction lands, call
+`loop/skill_deltas.py` `capture_correction(...)` — it files the `proposed` delta in-conversation
+(no close-out wait), with the same recurrence/escalation and operator-gated guarantees as `capture`.
+
 ### Part 4d — COMPREHENSIVE, never terse-+-"check the board" (the swarm/overnight report default)
 After any **swarm / overnight / multi-workstream** completion, the report to the founder DEFAULTS
 to the **full comprehensive plain-English "here is everything that has been accomplished" brief**

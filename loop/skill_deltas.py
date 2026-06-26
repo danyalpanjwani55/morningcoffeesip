@@ -385,6 +385,42 @@ def capture(
     return get_delta(delta_id, brain_root)  # type: ignore[return-value]
 
 
+def capture_correction(
+    *,
+    skill: str,
+    root_cause: str,
+    what: str,
+    why: str,
+    owner: str,
+    anchor: str = "",
+    priority: str = "med",
+    brain_root=None,
+) -> SkillDelta:
+    """File a ``proposed`` skill-delta the INSTANT the operator (or another agent)
+    corrects a substantive error, in-conversation — without waiting for close-out.
+
+    This is the one-call convenience entrypoint pulse Part 4c points at ("an
+    unfiled callout is a lost callout"): the moment a correction lands mid-session,
+    an agent calls this and the lesson is tracked from that instant. It is a THIN
+    wrapper over ``capture()`` — same recurrence/escalation behavior, same
+    proposed-only / operator-gated guarantee, nothing new. The only convenience:
+    a mid-conversation correction has no pulse/handoff slug yet, so ``anchor``
+    defaults to an ``in-conversation-correction`` marker (capture() still requires
+    a non-empty anchor; this just supplies a sensible default for the in-the-moment
+    case). Pass a real anchor when you have one.
+    """
+    return capture(
+        skill=skill,
+        root_cause=root_cause,
+        what=what,
+        why=why,
+        owner=owner,
+        anchor=str(anchor).strip() or "in-conversation-correction",
+        priority=priority,
+        brain_root=brain_root,
+    )
+
+
 def _new_id(skill: str, root_cause: str) -> str:
     """A short, stable-ish id derived from the recurrence key + a uuid tail
     (the tail keeps two captures that share a normalized key but are filed in
@@ -659,6 +695,6 @@ __all__ = [
     "SkillDelta",
     "PROPOSED", "APPLIED", "REJECTED", "SUPERSEDED",
     "loop_root", "ledger_path", "ledger_md_path", "preimage_dir",
-    "capture", "apply", "reject", "revert", "supersede",
+    "capture", "capture_correction", "apply", "reject", "revert", "supersede",
     "list_deltas", "open_deltas", "get_delta", "render_markdown",
 ]

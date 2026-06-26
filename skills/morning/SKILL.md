@@ -48,6 +48,11 @@ founder inspect raw git state or remember which maintenance command to run.
        booting agent. Reported as a count + worst offenders (surface — a wiki-hygiene backlog).
        Plus a peer-relative staleness read: a wiki whose newest page is conspicuously old has
        gone quiet.
+     - **(e2) Oversize-page canary.** A wiki page that outgrew the bounded-write cap is an
+       unnavigable pile (the flat-index ceiling). Run `scan_oversize_pages` (`loop/recall_health.py`)
+       over the `$BRAIN_ROOT/wiki/` tree; report any page over the cap as a count + worst
+       offenders — surface (a hygiene backlog, NOT a HALT; the page splits losslessly when next
+       written, per 2.1's lossless cap).
    - **(f) Session/sync debt.** Surface only counts: sessions needing a pulse, sessions
      needing human review, unfolded pulses, and sync blockers (read any open
      `ops/exchange/sync-blockers/*.md` and show it as a one-line item). This collapses the

@@ -28,7 +28,9 @@ they're trying to clarify. This skill turns that into structured progress.
    has positive marginal value.** Stop the instant another question would have a
    marginal-negative impact on the cooperation. *(Learn that limit over time — with each
    ramble, get better at knowing when to stop asking. Over-asking is the failure mode to
-   optimize away.)*
+   optimize away.)* Apply the **clarify-gate** (root `CLAUDE.md` §2.1): ask one line only when
+   a wrong guess is expensive (rework / a fan-out / an external artifact); if cheap and
+   reversible, fold the assumption in and keep moving.
 3. **Fold into the plan** — write the new understanding into the brain (the owning agents'
    wikis / the pillars / the decision queue); **repopulate the task board** — add, embellish,
    delete, and re-sequence tasks/projects/subprojects so the board reflects the new thinking.
