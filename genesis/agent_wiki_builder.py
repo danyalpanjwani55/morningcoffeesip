@@ -58,8 +58,37 @@ from genesis_pipeline import OUT_DIR
 
 WIKI_ROOT = os.path.join(OUT_DIR, "wiki")
 
-# Page status stamp — every page is a DRAFT until the operator ratifies.
+# Page status stamp — the index/log container is DRAFT until the operator ratifies.
 DRAFT = "🟡 DRAFT"
+
+# Three honest draft-tiers (de-draft doctrine): reserve the confident label for
+# what is actually confident, instead of stamping every fact-page the same.
+# Derived PURELY from the claim-contract fields the page is built on — there is
+# NO source-verification engine in MCS, so a machine-built page is never VERIFIED
+# until its claim shows current + aligned (or the operator promotes it).
+TIER_VERIFIED = "🟢 VERIFIED"
+TIER_UNVERIFIED = "🟡 UNVERIFIED"
+TIER_ASPIRATIONAL = "⚪ ASPIRATIONAL"
+
+
+def derive_tier(
+    *,
+    has_anchor: bool,
+    recency_status: str = "unknown",
+    conflict_status: str = "unknown",
+    confidence: str = "medium",
+) -> str:
+    """Map a claim's contract fields to one of three honest tiers (de-draft).
+
+      * aspirational — no citation / forward-looking synthesis
+      * verified     — cited AND recency 'current' AND conflict 'aligned' AND not low-confidence
+      * unverified   — cited but stale/unknown recency, disputed, or low-confidence
+    """
+    if not has_anchor:
+        return TIER_ASPIRATIONAL
+    if recency_status == "current" and conflict_status == "aligned" and confidence != "low":
+        return TIER_VERIFIED
+    return TIER_UNVERIFIED
 
 # A concept page is synthesized PER pillar/domain the agent owns; this slice
 # emits one domain-level concept page (the agent's charter synthesis). Doctrine
@@ -253,15 +282,19 @@ def _render_source_page(
             "(no excerpt text available; see source anchor)"
         ]
 
+    # de-draft tier: a cited source page is UNVERIFIED (machine-distilled, not yet
+    # confirmed); the builder has no recency/conflict status, so it never reaches
+    # VERIFIED here (reserved for current+aligned claims / operator promotion).
+    tier = derive_tier(has_anchor=bool(anchors))
     lines = [
         "---",
         f"source_doc: {source_id}",
         f"source_anchor: {source_id}",
         f"kinds: [{', '.join(kinds)}]",
-        f"confirmation: {DRAFT}",
+        f"confirmation: {tier}",
         "confidence: medium",
         "canonical: true",
-        f"status: {DRAFT}",
+        f"status: {tier}",
         "---",
         "",
         f"# Source {number:02d} — {source_id}",
@@ -313,7 +346,7 @@ def _render_concept_page(
         f"topic: {topic}",
         f"synthesizes: [{', '.join(f'{n:02d}' for n in source_numbers)}]",
         "page_kind: concept (synthesis / reference)",
-        f"status: {DRAFT}",
+        f"status: {TIER_ASPIRATIONAL}",
         "---",
         "",
         f"# Concept — {domain or topic}",
@@ -435,7 +468,7 @@ def _render_log(
     else:
         lines.append("- dropped sources: none")
     lines += [
-        "- All pages stamped 🟡 DRAFT; nothing ratified, sent, or applied.",
+        "- Fact pages stamped by tier (unverified source / aspirational synthesis); nothing ratified, sent, or applied.",
         "",
     ]
     return "\n".join(lines) + "\n"
@@ -523,7 +556,7 @@ def build_agent_wiki(
         rel = f"sources/{number:02d}_{page_slug}.md"
         path = _write(os.path.join(wiki_dir, rel), body)
         source_pages.append(path)
-        source_rows.append((rel, source_id, DRAFT))
+        source_rows.append((rel, source_id, derive_tier(has_anchor=bool(resolvable))))
         source_numbers.append(number)
         kept_anchors.extend(resolvable)
 
@@ -544,7 +577,7 @@ def build_agent_wiki(
         rel = f"concepts/{_CONCEPT_TOPIC}.md"
         path = _write(os.path.join(wiki_dir, rel), body)
         concept_pages.append(path)
-        concept_rows.append((rel, _CONCEPT_TOPIC, DRAFT))
+        concept_rows.append((rel, _CONCEPT_TOPIC, TIER_ASPIRATIONAL))
 
     # index.md + log.md always carry the agent's own anchors (they are the
     # catalog/ledger, grounded by the proposal's anchors).

@@ -166,10 +166,10 @@ def test_auto_ratify_builds_cited_draft_wikis(confined_out):
                 f"wiki write escaped the confined root: {path}"
             )
 
-        # Pages are CITED + DRAFT-stamped (verify-before-relay + proposals-only).
+        # Pages are CITED + tier-stamped (de-draft: source=UNVERIFIED, index=DRAFT).
         for src in r.source_pages:
             text = _read(src)
-            assert "🟡 DRAFT" in text
+            assert "🟡 UNVERIFIED" in text
             assert "## Source anchors (citations)" in text
             assert "`" in text  # carries at least one backticked anchor ref
         assert "🟡 DRAFT" in _read(r.index_path)

@@ -126,10 +126,10 @@ def test_proposed_agent_gets_a_wiki_with_cited_pages(wiki_root):
     for path in res.source_pages + res.concept_pages:
         assert os.path.isfile(path)
 
-    # each source page CARRIES its anchors (cited) + is DRAFT
+    # each source page CARRIES its anchors (cited) + is UNVERIFIED-tier (de-draft)
     page = open(res.source_pages[0], encoding="utf-8").read()
     assert "## Source anchors (citations)" in page
-    assert "🟡 DRAFT" in page
+    assert "🟡 UNVERIFIED" in page
     assert "`pricing-thread#msg7`" in page or "`pricing-review#L8`" in page \
         or "`cust-thread#m2`" in page
 
@@ -143,7 +143,7 @@ def test_proposed_agent_gets_a_wiki_with_cited_pages(wiki_root):
     # the concept page cites >=1 anchor and is reference-tier
     concept = open(res.concept_pages[0], encoding="utf-8").read()
     assert "## Source anchors" in concept
-    assert "🟡 DRAFT" in concept
+    assert "⚪ ASPIRATIONAL" in concept
 
     # the log records the build, append-only, DRAFT, with the anchor count
     log = open(res.log_path, encoding="utf-8").read()
