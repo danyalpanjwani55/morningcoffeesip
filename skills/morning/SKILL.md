@@ -53,6 +53,15 @@ founder inspect raw git state or remember which maintenance command to run.
        over the `$BRAIN_ROOT/wiki/` tree; report any page over the cap as a count + worst
        offenders — surface (a hygiene backlog, NOT a HALT; the page splits losslessly when next
        written, per 2.1's lossless cap).
+     - **(e3) Every-agent boot-read.** For EACH agent under `$BRAIN_ROOT/wiki/<agent>/`, read its
+       `status.md` top (working-on · open blockers · counts — built by `build_status` in
+       `loop/status.py`), its journal `next-time` lines (`<agent>/journal.md`, the "do
+       differently" carry-forward), and any entry flagged `ready-to-graduate`. This is the boot
+       version of an agent reading its own learnings BEFORE it works — so the day starts from
+       what each lane learned, not a cold re-derivation. **Surface only** (a one-line-per-agent
+       roll-up + the ready-to-graduate count): a `ready` flag is a PROPOSAL the founder applies
+       at the skill-deltas gate (1.5), never an auto-rewrite; an agent with no journal yet is a
+       clean "no history" line, not a blocker.
    - **(f) Session/sync debt.** Surface only counts: sessions needing a pulse, sessions
      needing human review, unfolded pulses, and sync blockers (read any open
      `ops/exchange/sync-blockers/*.md` and show it as a one-line item). This collapses the

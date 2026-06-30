@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "printf '%s\\n' 'ROUTE-FIRST: should a roster specialist handle this instead of you? Route it if so.' 'CANONICAL-CHECK: does this reply violate the CLAUDE.md chain, the open skill-deltas, or agreed-framings.md? If so, fix it before replying.'"
+            "command": "printf '%s\\n' 'ROUTE-FIRST: should a roster specialist handle this instead of you? Route it if so.' 'CANONICAL-CHECK: does this reply violate the CLAUDE.md chain, the open skill-deltas, or agreed-framings.md? If so, fix it before replying.' '(3) READ-WIKI-FIRST: read the owning concept (state + overview) and its pointed-to source docs before re-deriving a fact.'"
           }
         ]
       }

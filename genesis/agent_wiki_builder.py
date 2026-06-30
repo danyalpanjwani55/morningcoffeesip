@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from typing import Iterable
 
@@ -55,6 +56,20 @@ from genesis_contracts import (
 # The wiki lives under the genesis OUT_DIR (genesis/out/wiki/). Importing the
 # pipeline's OUT_DIR keeps the single confinement root in one place.
 from genesis_pipeline import OUT_DIR
+
+# loop/ holds journal_schema (the canonical learning-loop-v2 shapes). genesis/ is
+# already on sys.path (this module imports flat); add loop/ the same way fold.py
+# reaches into genesis/, so the concept STATE + router formats have ONE definition.
+_LOOP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "loop")
+if _LOOP not in sys.path:
+    sys.path.insert(0, _LOOP)
+
+from journal_schema import (  # noqa: E402
+    ConceptState,
+    RouterRow,
+    render_concept_state,
+    render_router_index,
+)
 
 WIKI_ROOT = os.path.join(OUT_DIR, "wiki")
 
@@ -201,6 +216,14 @@ def _anchor_md(a: Anchor) -> str:
     return f"`{a.source_id}{loc}` ({a.kind})"
 
 
+def _anchor_directive(a: Anchor) -> str:
+    """An anchor rendered as a read-THESE directive line (the routing payoff —
+    the source-docs entry that tells the agent which primary to open). ONE
+    backtick group (the anchor) so the source it points at is unambiguous; the
+    canonical page carrying it is ``sources/<NN>_<slug-of-source_id>.md``."""
+    return f"read {_anchor_md(a)} → in sources/"
+
+
 def _excerpt(text: str, limit: int = 200) -> str:
     snippet = " ".join(text.split())
     return snippet if len(snippet) <= limit else snippet[: limit - 1] + "…"
@@ -323,16 +346,29 @@ def _render_source_page(
     return "\n".join(lines) + "\n"
 
 
-def _render_concept_page(
+def _build_concept_state(
     *,
-    topic: str,
+    slug: str,
+    agent: str,
     domain: str,
     source_numbers: list[int],
     anchors: list[Anchor],
     synth: dict,
-) -> str:
-    """The synthesis page. Cited (carries the agent's anchors); reference-tier
-    (points back to canonical source pages). Caller guarantees >=1 anchor."""
+    state_updated: str,
+) -> ConceptState:
+    """Build the per-concept STATE file (the learning-loop-v2 shape) — what the
+    agent reads FIRST after routing. The FORMAT upgrade of the old synthesis
+    page; same grounded content, now in the 3-part recurrent-state / overview /
+    source-docs shape. Caller guarantees >=1 anchor.
+
+      * ``recurrent_state`` — the concept's claims (the synth summary + each
+        theme), each tier-stamped (``derive_tier`` — UNVERIFIED for a machine-
+        built cited concept) and anchored to a backing source. This is the
+        "what is true NOW" the fold restamps.
+      * ``overview`` — the existing synthesis body (orient fast).
+      * ``source_docs`` — the concept's anchors rendered as a read-THESE
+        directive (the routing payoff: open these primaries for a real answer).
+    """
     summary = str(synth.get("summary", "")).strip()
     if not summary:
         summary = (
@@ -341,44 +377,42 @@ def _render_concept_page(
         )
     themes = [str(t).strip() for t in synth.get("themes", []) if str(t).strip()]
 
-    lines = [
-        "---",
-        f"topic: {topic}",
-        f"synthesizes: [{', '.join(f'{n:02d}' for n in source_numbers)}]",
-        "page_kind: concept (synthesis / reference)",
-        f"status: {TIER_ASPIRATIONAL}",
-        "---",
-        "",
-        f"# Concept — {domain or topic}",
-        "",
-        "## What's known (synthesis across the sources)",
-        "",
-        summary,
-        "",
-    ]
-    if themes:
-        lines += ["## Recurring themes", ""]
-        for t in themes:
-            lines.append(f"- {t}")
-        lines.append("")
-    lines += [
-        "## Source anchors (per the canonical source pages)",
-        "",
-    ]
-    for a in anchors:
-        lines.append(f"- {_anchor_md(a)}")
-    lines += [
-        "",
-        "## Cross-links",
-        "",
-        "- index: ../index.md",
-        "- canonical source pages: ../sources/",
-        "",
-        "> Reference-tier synthesis — never the sole basis for a load-bearing "
-        "claim; always points back to a canonical source page.",
-        "",
-    ]
-    return "\n".join(lines) + "\n"
+    # The concept is cited but machine-built (no recency/conflict status) -> the
+    # same UNVERIFIED tier the source pages carry. Reserved-confidence honoured.
+    tier = derive_tier(has_anchor=bool(anchors))
+    # First backing anchor as the claim's citation (deterministic, first-seen).
+    cite = _anchor_md(anchors[0]) if anchors else ""
+
+    recurrent_state: list[str] = [f"{summary} · {tier} · {cite}".rstrip(" ·")]
+    for t in themes:
+        recurrent_state.append(f"theme: {t} · {tier} · {cite}".rstrip(" ·"))
+
+    source_docs = [_anchor_directive(a) for a in anchors]
+
+    return ConceptState(
+        slug=slug,
+        agent=agent,
+        state_updated=state_updated or "YYYY-MM-DD",
+        recurrent_state=recurrent_state,
+        history=[],
+        overview=summary,
+        source_docs=source_docs,
+    )
+
+
+def _concept_router_row(cs: ConceptState) -> RouterRow:
+    """Derive the concept's router-index row from its STATE file — slug · 1-line
+    recurrent state · overview link · the source-docs to read. Pipes are escaped
+    so a claim can never break the markdown table."""
+    top = cs.recurrent_state[0] if cs.recurrent_state else "(no state yet)"
+    state_1line = _excerpt(top.replace("|", "/"), 120)
+    src = ", ".join(sd.replace("|", "/") for sd in cs.source_docs) or "(none)"
+    return RouterRow(
+        concept=cs.slug,
+        state=state_1line,
+        overview_link=f"concepts/{cs.slug}.md §overview",
+        source_docs=src,
+    )
 
 
 def _render_index(
@@ -386,11 +420,16 @@ def _render_index(
     agent_slug: str,
     domain: str,
     proposal_status: str,
-    source_rows: list[tuple[str, str, str]],  # (rel_path, source_id, status)
-    concept_rows: list[tuple[str, str, str]],  # (rel_path, topic, status)
-    anchors: list[Anchor],
+    router_rows: list[RouterRow],
 ) -> str:
-    lines = [
+    """The CONCEPT ROUTER ``index.md`` (learning-loop-v2 §3.1): match a task to a
+    concept, open its STATE file, read the pointed-to source docs. The flat
+    catalog is replaced by ``render_router_index`` (ONE shared definition) —
+    wrapped with the DRAFT / ``proposal_status`` frontmatter the index has always
+    carried (nothing here is ratified), and a pointer to the sources/log so the
+    ledger links aren't lost."""
+    table = render_router_index(agent_slug, router_rows)
+    head = [
         "---",
         f"agent: {agent_slug}",
         f"domain: {domain}",
@@ -398,41 +437,17 @@ def _render_index(
         f"status: {DRAFT}",
         "---",
         "",
-        f"# {agent_slug} — wiki index",
-        "",
-        f"DRAFT wiki for the proposed agent **{agent_slug}** "
-        f"(domain: {domain or 'unspecified'}). Built from the agent's roster "
-        "proposal + the corpus. Nothing here is ratified.",
-        "",
-        "## Source pages (CANONICAL)",
-        "",
-        "| Page | Source | Confirmation |",
-        "|---|---|---|",
     ]
-    for rel, sid, status in source_rows:
-        lines.append(f"| [{rel}]({rel}) | `{sid}` | {status} |")
-    if not source_rows:
-        lines.append("| _(none — no anchored source docs)_ | | |")
-    lines += [
+    tail = [
         "",
-        "## Concept pages (SYNTHESIS / reference)",
+        "---",
         "",
-        "| Page | Topic | Confirmation |",
-        "|---|---|---|",
-    ]
-    for rel, topic, status in concept_rows:
-        lines.append(f"| [{rel}]({rel}) | {topic} | {status} |")
-    if not concept_rows:
-        lines.append("| _(none)_ | | |")
-    lines += [
-        "",
-        "## Anchors behind this wiki",
+        "Per-concept STATE files live in `concepts/`; the canonical cited source "
+        "pages they point to live in `sources/`; the append-only build/ingest "
+        "ledger is `log.md`. Nothing here is ratified — DRAFT, proposals-only.",
         "",
     ]
-    for a in anchors:
-        lines.append(f"- {_anchor_md(a)}")
-    lines.append("")
-    return "\n".join(lines) + "\n"
+    return "\n".join(head) + table + "\n".join(tail) + "\n"
 
 
 def _render_log(
@@ -525,7 +540,6 @@ def build_agent_wiki(
     by_source = _group_anchors_by_source(all_anchors)
 
     source_pages: list[str] = []
-    source_rows: list[tuple[str, str, str]] = []
     source_numbers: list[int] = []
     dropped: list[str] = []
     kept_anchors: list[Anchor] = []
@@ -556,42 +570,45 @@ def build_agent_wiki(
         rel = f"sources/{number:02d}_{page_slug}.md"
         path = _write(os.path.join(wiki_dir, rel), body)
         source_pages.append(path)
-        source_rows.append((rel, source_id, derive_tier(has_anchor=bool(resolvable))))
         source_numbers.append(number)
         kept_anchors.extend(resolvable)
 
-    # Concept page — written ONLY if >=1 anchor survived (cite >=1 per page).
+    # Concept STATE file(s) — written ONLY if >=1 anchor survived (cite >=1 per
+    # page). The format upgrade: a learning-loop-v2 ConceptState (recurrent-state
+    # + overview + source-docs directive), and a router row derived from it.
     concept_pages: list[str] = []
-    concept_rows: list[tuple[str, str, str]] = []
+    router_rows: list[RouterRow] = []
     if kept_anchors:
         synth = _llm_concept_synth(
             llm, egress, domain=domain, by_source=by_source, corpus=corpus
         )
-        body = _render_concept_page(
-            topic=_CONCEPT_TOPIC,
+        cs = _build_concept_state(
+            slug=_CONCEPT_TOPIC,
+            agent=slug,
             domain=domain,
             source_numbers=source_numbers,
             anchors=kept_anchors,
             synth=synth,
+            state_updated=today,
         )
         rel = f"concepts/{_CONCEPT_TOPIC}.md"
-        path = _write(os.path.join(wiki_dir, rel), body)
+        path = _write(os.path.join(wiki_dir, rel), render_concept_state(cs))
         concept_pages.append(path)
-        concept_rows.append((rel, _CONCEPT_TOPIC, TIER_ASPIRATIONAL))
+        router_rows.append(_concept_router_row(cs))
 
-    # index.md + log.md always carry the agent's own anchors (they are the
-    # catalog/ledger, grounded by the proposal's anchors).
-    index_anchors = kept_anchors or all_anchors
+    # index.md is the concept ROUTER (route -> concept -> source docs); log.md is
+    # the append-only ledger. Both always written (they ARE the agent's catalog).
     index_body = _render_index(
         agent_slug=slug,
         domain=domain,
         proposal_status=proposal_status,
-        source_rows=source_rows,
-        concept_rows=concept_rows,
-        anchors=index_anchors,
+        router_rows=router_rows,
     )
     index_path = _write(os.path.join(wiki_dir, "index.md"), index_body)
 
+    # log.md carries the agent's own anchors (the kept ones, or — if every source
+    # was uncitable — the full proposal set, so the ledger still shows them).
+    log_anchors = kept_anchors or all_anchors
     log_body = _render_log(
         agent_slug=slug,
         domain=domain,
@@ -599,7 +616,7 @@ def build_agent_wiki(
         n_sources=len(source_pages),
         n_concepts=len(concept_pages),
         dropped=dropped,
-        anchors=index_anchors,
+        anchors=log_anchors,
         today=today,
     )
     log_path = _write(os.path.join(wiki_dir, "log.md"), log_body)

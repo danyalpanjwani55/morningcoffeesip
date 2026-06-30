@@ -133,17 +133,24 @@ def test_proposed_agent_gets_a_wiki_with_cited_pages(wiki_root):
     assert "`pricing-thread#msg7`" in page or "`pricing-review#L8`" in page \
         or "`cust-thread#m2`" in page
 
-    # the index lists the source + concept pages and carries anchors
+    # the index is now the CONCEPT ROUTER table (route -> concept -> source docs),
+    # carrying the agent slug + the per-concept row, and still DRAFT/proposed.
     index = open(res.index_path, encoding="utf-8").read()
-    assert "## Source pages (CANONICAL)" in index
-    assert "## Concept pages (SYNTHESIS / reference)" in index
-    assert "## Anchors behind this wiki" in index
+    assert "Concept Index — route here first" in index
+    assert "| Concept | State" in index            # the router table header
+    assert "domain-overview" in index              # the concept's row
+    assert "concepts/domain-overview.md §overview" in index  # the overview link
     assert "gtm-lead" in index
+    assert "proposal_status: proposed" in index    # ledger frontmatter preserved
+    assert "🟡 DRAFT" in index                      # nothing ratified
 
-    # the concept page cites >=1 anchor and is reference-tier
+    # the concept page is now a STATE file (recurrent-state + overview + source
+    # docs), cited (>=1 anchor) and tier-stamped UNVERIFIED (machine-built).
     concept = open(res.concept_pages[0], encoding="utf-8").read()
-    assert "## Source anchors" in concept
-    assert "⚪ ASPIRATIONAL" in concept
+    assert "## RECURRENT STATE" in concept
+    assert "## HIGH-LEVEL OVERVIEW" in concept
+    assert "## SOURCE DOCS — read THESE" in concept
+    assert "🟡 UNVERIFIED" in concept              # the recurrent-state tier token
 
     # the log records the build, append-only, DRAFT, with the anchor count
     log = open(res.log_path, encoding="utf-8").read()
@@ -201,11 +208,12 @@ def test_concept_page_dropped_when_no_anchor_survives(wiki_root):
     assert res.source_pages == []
     assert res.concept_pages == []               # no anchor survived -> no concept page
     assert len(res.dropped_sources) >= 1
-    # index + log still written (they ARE the agent's ledger)
+    # index + log still written (they ARE the agent's ledger); the router shows
+    # the "no concepts" fallback row (no concept survived to route to).
     assert os.path.isfile(res.index_path)
     assert os.path.isfile(res.log_path)
     index = open(res.index_path, encoding="utf-8").read()
-    assert "_(none — no anchored source docs)_" in index
+    assert "no concepts derived yet" in index
 
 
 # --------------------------------------------------------------------------- #

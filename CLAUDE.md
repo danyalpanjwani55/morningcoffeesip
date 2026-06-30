@@ -109,6 +109,10 @@ skill, engine, and change.
   one archived — **never silently delete**), bounded writes (guard against dumping big
   unmanaged blocks), hierarchical indexes over flat piles. Defer vector retrieval; don't train
   a model on the corpus — organized Markdown is the retrieval layer.
+  - **Retrieval-before-re-derivation.** Route a task to its owning concept and read that
+    concept's recurrent-state + the source docs it points to **before** deriving a fact from
+    scratch. If no concept matches, that's a **new-concept signal**, not a license to wing it —
+    say so; never answer against a wrongly-guessed concept.
 
 - **Twin-peer.** Pair each builder with a **different-engine** reviewer-twin. Both plan; one
   writes; the other reviews; the requirement-owner co-signs. A pair must not be able to

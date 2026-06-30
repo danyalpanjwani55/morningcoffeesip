@@ -7,7 +7,10 @@ Covers the route-first + canonical-check hook mechanism:
       isolated under tmp — never the real ``~/.claude``).
   (b) ``agreed-framings.md`` ships at repo root and is a content-empty template
       (headings + fill-me instructions only — no company content).
-  (c) the injected hook text names BOTH checks: ROUTE-FIRST and CANONICAL-CHECK.
+  (c) the injected hook text names ALL THREE checks: ROUTE-FIRST and
+      CANONICAL-CHECK (steps 1+2, carried byte-for-byte unchanged) plus the new
+      READ-WIKI-FIRST (step 3 — read the owning concept + its source docs before
+      re-deriving a fact).
 
 Conventions mirror the sibling suites (test_install.py / test_skills.py): a
 clean env fixture, direct function calls, tmp isolation, one concern per test.
@@ -173,7 +176,24 @@ def test_agreed_framings_has_the_three_headings():
         assert f"## {heading}" in body, f"missing heading: {heading}"
 
 
-# --- (c) the injected text names BOTH checks ------------------------------- #
+# --- (c) the injected text names ALL THREE checks -------------------------- #
+
+# The exact step-1 and step-2 command strings, byte-for-byte. The READ-WIKI-FIRST
+# step (Lane B) is APPENDED after these; these two must remain unchanged so the
+# pre-existing route-first + canonical-check discipline is never disturbed.
+STEP1_ROUTE_FIRST = (
+    "ROUTE-FIRST: should a roster specialist handle this instead of you? "
+    "Route it if so."
+)
+STEP2_CANONICAL_CHECK = (
+    "CANONICAL-CHECK: does this reply violate the CLAUDE.md chain, the open "
+    "skill-deltas, or agreed-framings.md? If so, fix it before replying."
+)
+STEP3_READ_WIKI_FIRST = (
+    "(3) READ-WIKI-FIRST: read the owning concept (state + overview) and its "
+    "pointed-to source docs before re-deriving a fact."
+)
+
 
 def test_injected_text_names_route_first_and_canonical_check():
     text = _user_prompt_submit_text(_repo_settings())
@@ -186,3 +206,28 @@ def test_injected_text_points_at_agreed_framings():
     fills — the mechanism that closes the loop with (b)."""
     text = _user_prompt_submit_text(_repo_settings())
     assert "agreed-framings.md" in text
+
+
+def test_steps_one_and_two_are_byte_unchanged():
+    """Appending step 3 must not have touched the pre-existing route-first +
+    canonical-check command strings — they ship byte-for-byte as before."""
+    text = _user_prompt_submit_text(_repo_settings())
+    assert STEP1_ROUTE_FIRST in text, "step (1) route-first text changed"
+    assert STEP2_CANONICAL_CHECK in text, "step (2) canonical-check text changed"
+
+
+def test_injected_text_carries_read_wiki_first_step_three():
+    """Step (3) READ-WIKI-FIRST — the Lane B retrieval-before-re-derivation
+    gate — is present in the injected text."""
+    text = _user_prompt_submit_text(_repo_settings())
+    assert STEP3_READ_WIKI_FIRST in text, "hook text does not carry step (3) READ-WIKI-FIRST"
+    assert "READ-WIKI-FIRST" in text
+
+
+def test_all_three_steps_present_in_order():
+    """All three checks are present and in canonical order (1 -> 2 -> 3)."""
+    text = _user_prompt_submit_text(_repo_settings())
+    i1 = text.find("ROUTE-FIRST")
+    i2 = text.find("CANONICAL-CHECK")
+    i3 = text.find("READ-WIKI-FIRST")
+    assert -1 < i1 < i2 < i3, f"steps out of order or missing: {(i1, i2, i3)}"

@@ -691,8 +691,124 @@ def _render_delta_block(d: SkillDelta) -> list[str]:
     return block
 
 
+# --------------------------------------------------------------------------- #
+# JOURNAL-AWARE wrapper — the learning-loop v2 delta (PROPOSALS-ONLY)          #
+# --------------------------------------------------------------------------- #
+#
+# WHY a wrapper, not new SkillDelta fields (plain terms): SkillDelta is the row
+# the operator's morning gate already understands, folded from a frozen ledger
+# event schema. The v2 journal adds five descriptive fields (lesson, symptom,
+# review, concept-touched, graduation) that belong to the JOURNAL, not to the
+# ledger row's identity. Bolting them onto the ledger event would touch the
+# apply/reject/revert machinery for zero gain. Instead this thin wrapper pairs
+# the journal fields with the SAME underlying SkillDelta produced by the existing
+# ``capture()`` — reused verbatim, recurrence/escalation and proposed-only
+# guarantees intact. The wrapper NEVER writes to any skill file (the graduation
+# flag is a surfaced proposal; the operator applies it later via ``apply()``).
+
+# Adversarial CONCUR/REFUTE — the twin-peer verdict recorded on a delta.
+CONCUR = "CONCUR"
+REFUTE = "REFUTE"
+# graduation states (the recurrence gate; proposals only — never auto-applied).
+GRAD_NONE = "none"
+GRAD_READY = "ready"   # recurrence>=2 + CONCUR -> SURFACED for operator apply
+
+
+@dataclass(frozen=True)
+class JournalDelta:
+    """A SkillDelta enriched with its journal context — the v2 record the fold
+    surfaces. ``delta`` is the underlying ledger row (from ``capture()``); the rest
+    is the journal chain. ``graduation == 'ready'`` is a PROPOSAL the operator
+    applies — it is NEVER auto-written into a skill (assert in ``capture_journal``).
+    """
+
+    delta: SkillDelta
+    lesson: str = ""
+    symptom: str = ""                 # the recurrence key (the underlying miss)
+    review: str = ""                  # "CONCUR by <r>" | "REFUTE by <r>; …" | ""
+    concept_touched: tuple[str, ...] = ()
+    graduation: str = GRAD_NONE       # none | ready (a surfaced proposal)
+
+    # convenience pass-throughs (so callers needn't reach through .delta)
+    @property
+    def id(self) -> str:
+        return self.delta.id
+
+    @property
+    def status(self) -> str:
+        return self.delta.status
+
+    @property
+    def recurrence(self) -> int:
+        return self.delta.recurrence
+
+    def is_ready_to_graduate(self) -> bool:
+        return self.graduation == GRAD_READY
+
+
+def review_concurs(review: str) -> bool:
+    """True iff a recorded review's verdict is CONCUR (the only verdict that can
+    graduate a recurrence). REFUTE / empty / anything else never graduates."""
+    head = re.sub(r"\s+", " ", str(review).strip().lower()).split(" ", 1)[0]
+    return head == CONCUR.lower()
+
+
+def capture_journal(
+    *,
+    skill: str,
+    root_cause: str,
+    what: str,
+    why: str,
+    owner: str,
+    anchor: str,
+    lesson: str = "",
+    symptom: str = "",
+    review: str = "",
+    concept_touched: Iterable[str] = (),
+    priority: str = "med",
+    brain_root=None,
+) -> JournalDelta:
+    """Capture a journal-context skill-delta: REUSE ``capture()`` for the ledger
+    row (so recurrence/escalation + proposed-only behavior is identical), then wrap
+    it with the journal fields and compute the graduation flag.
+
+    GRADUATION (proposals-only): a delta whose underlying row has now recurred
+    (``recurrence >= 2`` — the same skill+root_cause captured a 2nd time) AND whose
+    review is a CONCUR is flagged ``graduation='ready'``. That flag is a SURFACED
+    PROPOSAL: the operator applies it later via ``apply()``. This function asserts
+    it has NOT touched any skill file — graduation here is metadata, never an edit.
+    """
+    # delegate the ledger write to the existing, proven capture (do not reimplement)
+    delta = capture(
+        skill=skill, root_cause=root_cause, what=what, why=why, owner=owner,
+        anchor=anchor, priority=priority, brain_root=brain_root,
+    )
+
+    graduated = delta.recurrence >= 2 and review_concurs(review)
+    jd = JournalDelta(
+        delta=delta,
+        lesson=lesson,
+        symptom=symptom,
+        review=review,
+        concept_touched=tuple(concept_touched),
+        graduation=GRAD_READY if graduated else GRAD_NONE,
+    )
+
+    # HARD GUARANTEE: graduation surfaces a proposal; it MUST NOT apply anything.
+    # The only way a delta leaves ``proposed`` is a separate operator ``apply()``
+    # (which pairs an APPLIED row with an archived pre-image). Assert that here so
+    # a future edit that tries to auto-apply on graduation trips this immediately.
+    assert jd.delta.status == PROPOSED, (
+        "capture_journal must NEVER move a delta off 'proposed' — graduation is a "
+        "surfaced PROPOSAL the operator applies, never an auto-apply."
+    )
+    return jd
+
+
 __all__ = [
     "SkillDelta",
+    "JournalDelta", "capture_journal", "review_concurs",
+    "CONCUR", "REFUTE", "GRAD_NONE", "GRAD_READY",
     "PROPOSED", "APPLIED", "REJECTED", "SUPERSEDED",
     "loop_root", "ledger_path", "ledger_md_path", "preimage_dir",
     "capture", "capture_correction", "apply", "reject", "revert", "supersede",
